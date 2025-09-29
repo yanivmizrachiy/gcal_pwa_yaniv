@@ -1,0 +1,61 @@
+name: Issue Commands
+on:
+  issue_comment:
+    types: [created, edited]
+  issues:
+    types: [opened, edited]
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  handle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read body
+        id: body
+        run: |
+          jq -r '.comment.body // .issue.body // ""' "$GITHUB_EVENT_PATH" > body.txt
+          cat body.txt
+
+      - name: Parse command
+        id: parse
+        run: |
+          BODY="$(tr -d '\r' < body.txt)"
+          CMD="$(echo "$BODY" | awk '{print $1}')"
+          ARG="$(echo "$BODY" | sed -E 's#^/[^ ]+ *##')"
+          echo "cmd=$CMD" >> $GITHUB_OUTPUT
+          echo "arg=$ARG" >> $GITHUB_OUTPUT
+
+      # /set exec_url https://script.google.com/macros/s/…/exec
+      - name: Set EXEC_URL in index.html
+        if: steps.parse.outputs.cmd == '/set' && startsWith(steps.parse.outputs.arg, 'exec_url ')
+        run: |
+          URL="$(echo "${{ steps.parse.outputs.arg }}" | sed 's/^exec_url *//')"
+          git fetch origin gh-pages || true
+          git checkout gh-pages || git checkout -b gh-pages
+          # נסה להחליף placeholder
+          sed -i "s|__EXEC_URL__|$URL|g" index.html || true
+          # ואם יש שורת const EXEC_URL = '...';
+          sed -i -E "s|const[[:space:]]+EXEC_URL[[:space:]]*=[[:space:]]*['\"][^'\"]+['\"]|const EXEC_URL = '$URL'|g" index.html || true
+          git config user.name  "actions-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add index.html
+          git commit -m "set EXEC_URL via issue command" || echo "No changes"
+          git push origin gh-pages
+
+      # /deploy
+      - name: Deploy (touch gh-pages)
+        if: steps.parse.outputs.cmd == '/deploy'
+        run: |
+          git fetch origin gh-pages || true
+          git checkout gh-pages || git checkout -b gh-pages
+          date > .last_deploy
+          git config user.name  "actions-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add .last_deploy
+          git commit -m "deploy via issue command" || echo "No changes"
+          git push origin gh-pages
