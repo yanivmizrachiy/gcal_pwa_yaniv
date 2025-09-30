@@ -1,61 +1,152 @@
-name: Issue Commands
+name: Issue Commands (Smart Controls)
 on:
-  issue_comment:
-    types: [created, edited]
   issues:
     types: [opened, edited]
+  issue_comment:
+    types: [created]
+
 permissions:
   contents: write
+  pages: write
+  id-token: write
+  actions: read
   issues: write
-  pull-requests: write
 
 jobs:
-  handle:
+  route:
+    if: github.event.issue.pull_request == null
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Read body
-        id: body
-        run: |
-          jq -r '.comment.body // .issue.body // ""' "$GITHUB_EVENT_PATH" > body.txt
-          cat body.txt
+      - name: Checkout gh-pages
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
 
       - name: Parse command
         id: parse
         run: |
-          BODY="$(tr -d '\r' < body.txt)"
-          CMD="$(echo "$BODY" | awk '{print $1}')"
-          ARG="$(echo "$BODY" | sed -E 's#^/[^ ]+ *##')"
-          echo "cmd=$CMD" >> $GITHUB_OUTPUT
-          echo "arg=$ARG" >> $GITHUB_OUTPUT
+          # קולט כותרת וטקסט (מה-issue או מהתגובה)
+          if [ "${{ github.event_name }}" = "issues" ]; then
+            TEXT="${{ github.event.issue.body }}"
+            TITLE="${{ github.event.issue.title }}"
+          else
+            TEXT="${{ github.event.comment.body }}"
+            TITLE="${{ github.event.issue.title }}"
+          fi
+          echo "title<<EOF" >> $GITHUB_OUTPUT
+          echo "$TITLE" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "text<<EOF" >> $GITHUB_OUTPUT
+          echo "$TEXT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
-      # /set exec_url https://script.google.com/macros/s/…/exec
-      - name: Set EXEC_URL in index.html
-        if: steps.parse.outputs.cmd == '/set' && startsWith(steps.parse.outputs.arg, 'exec_url ')
+      # /status – מחזיר סטטוס
+      - name: Status
+        if: contains(steps.parse.outputs.text, '/status') || contains(steps.parse.outputs.title, 'status/')
         run: |
-          URL="$(echo "${{ steps.parse.outputs.arg }}" | sed 's/^exec_url *//')"
-          git fetch origin gh-pages || true
-          git checkout gh-pages || git checkout -b gh-pages
-          # נסה להחליף placeholder
-          sed -i "s|__EXEC_URL__|$URL|g" index.html || true
-          # ואם יש שורת const EXEC_URL = '...';
-          sed -i -E "s|const[[:space:]]+EXEC_URL[[:space:]]*=[[:space:]]*['\"][^'\"]+['\"]|const EXEC_URL = '$URL'|g" index.html || true
-          git config user.name  "actions-bot"
-          git config user.email "actions@users.noreply.github.com"
-          git add index.html
-          git commit -m "set EXEC_URL via issue command" || echo "No changes"
-          git push origin gh-pages
+          echo "Repo: $GITHUB_REPOSITORY"
+          echo "Branch: gh-pages"
+          test -f index.html && echo "index.html: OK" || echo "index.html: MISSING"
 
-      # /deploy
-      - name: Deploy (touch gh-pages)
-        if: steps.parse.outputs.cmd == '/deploy'
+      # /set exec_url <URL> – מזריק EXEC_URL לתוך index.html
+      - name: Set EXEC_URL
+        if: contains(steps.parse.outputs.text, '/set exec_url') || contains(steps.parse.outputs.title, 'set exec_url')
         run: |
-          git fetch origin gh-pages || true
-          git checkout gh-pages || git checkout -b gh-pages
-          date > .last_deploy
-          git config user.name  "actions-bot"
-          git config user.email "actions@users.noreply.github.com"
-          git add .last_deploy
-          git commit -m "deploy via issue command" || echo "No changes"
-          git push origin gh-pages
+          URL="$(printf %s "${{ steps.parse.outputs.text }}" | sed -n 's#.*/set exec_url[[:space:]]\+\(https\?://[^[:space:]]*\).*#\1#p')"
+          if [ -z "$URL" ]; then
+            echo "No EXEC_URL found in body"; exit 1;
+          fi
+          if [ ! -f index.html ]; then
+            echo "index.html not found on gh-pages"; exit 1;
+          fi
+          # אם אין placeholder נחליף ישירות כל ערך קיים EXEC_URL=…
+          if grep -q '__EXEC_URL__' index.html; then
+            sed -i "s|__EXEC_URL__|$URL|g" index.html
+          else
+            # נסה להחליף שורת EXEC_URL אם קיימת
+            sed -i "s|const EXEC_URL = .*;|const EXEC_URL = '$URL';|g" index.html
+          fi
+          echo "EXEC_URL set to: $URL"
+
+      # /update_ui – משדרג index.html לממשק חכם (RTL, כפתורים, טוסט)
+      - name: Update UI
+        if: contains(steps.parse.outputs.text, '/update_ui') || contains(steps.parse.outputs.title, 'update_ui/')
+        run: |
+          cat > index.html <<'HTML'
+<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>יומן חכם – יניב</title>
+<link rel="manifest" href="manifest.webmanifest">
+<style>
+  body{margin:0;background:#0b1220;color:#e7ecf5;font:16px/1.5 system-ui,Segoe UI,Arial}
+  .wrap{max-width:1100px;margin:24px auto;padding:0 12px;display:grid;gap:14px;grid-template-columns:1.2fr 1fr}
+  .card{background:#0e1830;border:1px solid #223556;border-radius:14px;padding:14px;box-shadow:0 8px 30px rgba(0,0,0,.35)}
+  .row{display:flex;gap:8px;flex-wrap:wrap}
+  button{background:#3b82f6;border:none;color:#fff;padding:10px 14px;border-radius:12px;cursor:pointer}
+  button.secondary{background:#152341}
+  textarea{width:100%;min-height:130px;border-radius:12px;background:#0d1528;border:1px solid #223556;color:#e7ecf5;padding:10px}
+  .muted{color:#9fb3d1;font-size:.9rem}
+  .list{display:grid;gap:8px}
+  .item{background:#0d1528;border:1px solid #223556;padding:10px;border-radius:12px}
+  .bar{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+  .toast{position:fixed;bottom:16px;right:16px;background:#0d1528;color:#fff;border:1px solid #2a3d66;padding:12px 14px;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.4);display:none;z-index:100}
+  pre{white-space:pre-wrap;word-break:break-word}
+</style>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="row" style="margin-bottom:8px">
+        <button id="runText">בצע מהטקסט</button>
+        <button id="today" class="secondary">אירועי היום</button>
+      </div>
+      <label class="muted" for="nl">כתוב הוראה חכמה בעברית (למשל: “מחר 10:00–11:00 ישיבת צוות צבע כחול במשרד, תזכורות 30,10”)</label>
+      <textarea id="nl" placeholder="לדוגמה: היום 14:30–15:15 פגישה עם דני צבע אדום, תזכורת 10 דקות"></textarea>
+      <div class="row" style="margin-top:8px">
+        <button id="selfTest">🔍 בדיקת מומחה</button>
+        <button id="clear" class="secondary">נקה</button>
+      </div>
+      <div id="status" class="muted" style="margin-top:6px"></div>
+    </div>
+    <div class="card">
+      <div class="muted">תוצאה</div>
+      <div id="list" class="list"></div>
+      <pre id="out">(אין עדיין תוצאה)</pre>
+    </div>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="assertive"></div>
+<script>
+const EXEC_URL = '__EXEC_URL__'; // מוחלף אוטומטית ע"י /set exec_url
+const nl=document.getElementById('nl'),out=document.getElementById('out'),list=document.getElementById('list'),statusEl=document.getElementById('status'),toastEl=document.getElementById('toast');
+function toast(m){toastEl.textContent=m;toastEl.style.display='block';setTimeout(()=>toastEl.style.display='none',2400)}
+function render(d){list.innerHTML='';out.textContent=typeof d==='string'?d:JSON.stringify(d,null,2);if(d&&d.items){d.items.forEach(ev=>{const div=document.createElement('div');div.className='item';const t=document.createElement('div');t.textContent=ev.summary||'(ללא כותרת)';const bar=document.createElement('div');bar.className='bar';if(ev.htmlLink){const b=document.createElement('button');b.className='secondary';b.textContent='פתח ביומן »';b.onclick=()=>window.open(ev.htmlLink,'_blank');bar.appendChild(b);}div.appendChild(t);if(bar.children.length)div.appendChild(bar);list.appendChild(div);});}}
+async function call(payload){statusEl.textContent='מריץ…';try{const r=await fetch(EXEC_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const data=await r.json();render(data);statusEl.textContent=data&&data.ok?'✅ הצלחה':'ℹ️';toast(data&&data.ok?'בוצע':(data.error||'בוצע'))}catch(e){render(String(e));statusEl.textContent='❗ שגיאה';toast('שגיאת רשת/שרת')}}
+document.getElementById('runText').onclick=()=>call({text:nl.value.trim()});
+document.getElementById('today').onclick=()=>{const d0=new Date();d0.setHours(0,0,0,0);const d1=new Date(d0);d1.setDate(d1.getDate()+1);call({action:'findEvents',options:{timeMin:d0.toISOString(),timeMax:d1.toISOString(),maxResults:50}})};
+document.getElementById('selfTest').onclick=()=>call({action:'selfTest'});
+document.getElementById('clear').onclick=()=>{nl.value='';out.textContent='(נוקה)';list.innerHTML=''};
+if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
+</script>
+</body></html>
+HTML
+
+      - name: Commit changes (if any)
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Issue-commands: apply changes"
+          branch: gh-pages
+
+      - name: Comment back to Issue
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const core = require('@actions/core');
+            const title = `🧰 Issue Commands`;
+            const body = `Processed.\n\n**Title:** ${core.getInput('title')}\n\nRun finished ✔️`;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body
+            });
+          result-encoding: string
