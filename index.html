@@ -1,7 +1,99 @@
-<!doctype html><meta charset="utf-8"><title>GCal PWA</title>
-<link rel="manifest" href="manifest.webmanifest">
-<body style="font-family:system-ui;background:#0b1220;color:#e7ecf5">
-  <h1 style="text-align:center">GCal PWA</h1>
-  <p style="text-align:center">Install / Add to Home Screen</p>
-  <script>if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js')</script>
-<script>const EXEC_URL = "https://script.google.com/macros/s/AKfycbyETJajNYZVf0W8lE8KrDo8SUFspkoN0Lg7RW4fJ9YzzBcl39HEINFTTx6tOwRYzZn8/exec";</script></body>
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>יומן חכם – יניב • v6</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <style>
+    :root{--bg:#0b1220;--card:#101a30;--muted:#9fb0d4;--btn:#1c2e54;--btn2:#0e1a35}
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;background:var(--bg);color:#e7ecf5;font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial}
+    .wrap{max-width:900px;margin:0 auto;padding:18px}
+    .grid{display:grid;gap:12px}
+    @media (min-width:820px){.grid{grid-template-columns:1fr 1fr}}
+    .card{background:var(--card);border:1px solid #223556;border-radius:14px;padding:14px}
+    .muted{color:var(--muted);font-size:13px}
+    .row{display:flex;gap:8px;flex-wrap:wrap}
+    button{background:var(--btn);border:1px solid #2a3d66;color:#fff;border-radius:10px;padding:10px 14px;cursor:pointer}
+    button.secondary{background:var(--btn2)}
+    textarea{width:100%;min-height:160px;background:#0d1528;border:1px solid #223556;border-radius:10px;color:#e7ecf5;padding:10px}
+    .list{display:grid;gap:8px;margin-top:8px}
+    .item{background:#0d1528;border:1px solid #223556;padding:10px;border-radius:12px}
+    .bar{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+    .toast{position:fixed;bottom:16px;right:16px;background:#0d1528;color:#fff;border:1px solid #2a3d66;padding:12px 14px;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.4);display:none;z-index:100}
+    pre{white-space:pre-wrap;word-break:break-word}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="grid">
+      <div class="card">
+        <div class="row" style="margin-bottom:8px">
+          <button id="runText">בצע מהטקסט</button>
+          <button id="today" class="secondary">אירועי היום</button>
+        </div>
+        <label class="muted" for="nl">כתוב הוראה חכמה בעברית (למשל: “מחר 10:00–11:00 ישיבת צוות צבע כחול במשרד, תזכורות 30,10”)</label>
+        <textarea id="nl" placeholder="לדוגמה: היום 14:30–15:15 פגישה עם דני צבע אדום, תזכורת 10 דקות"></textarea>
+        <div class="row" style="margin-top:8px">
+          <button id="selfTest">🔍 בדיקת מומחה</button>
+          <button id="clear" class="secondary">נקה</button>
+        </div>
+        <div id="status" class="muted" style="margin-top:6px"></div>
+      </div>
+
+      <div class="card">
+        <div class="muted">תוצאה</div>
+        <div id="list" class="list"></div>
+        <pre id="out">(אין עדיין תוצאה)</pre>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="assertive"></div>
+
+  <script>
+    // ה-Workflow שלך מזריק את ה-EXEC_URL ע"י החלפה של __EXEC_URL__ בערך האמיתי
+    const EXEC_URL = "__EXEC_URL__";
+
+    const nl = document.getElementById('nl');
+    const out = document.getElementById('out');
+    const list = document.getElementById('list');
+    const statusEl = document.getElementById('status');
+    const toastEl = document.getElementById('toast');
+
+    function toast(m){ toastEl.textContent=m; toastEl.style.display='block'; setTimeout(()=>toastEl.style.display='none',2400); }
+    function render(d){
+      list.innerHTML = '';
+      out.textContent = typeof d === 'string' ? d : JSON.stringify(d,null,2);
+      if(d && d.items){
+        d.items.forEach(ev=>{
+          const div=document.createElement('div'); div.className='item';
+          const t=document.createElement('div'); t.textContent=ev.summary||'(ללא כותרת)';
+          const bar=document.createElement('div'); bar.className='bar';
+          if(ev.htmlLink){ const b=document.createElement('button'); b.className='secondary'; b.textContent='פתח ביומן »'; b.onclick=()=>window.open(ev.htmlLink,'_blank'); bar.appendChild(b); }
+          div.appendChild(t); if(bar.children.length) div.appendChild(bar); list.appendChild(div);
+        });
+      }
+    }
+    async function call(payload){
+      statusEl.textContent='מריץ…';
+      try{
+        const r = await fetch(EXEC_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+        const data = await r.json();
+        render(data);
+        statusEl.textContent = data && data.ok ? '✅ הצלחה' : 'ℹ️';
+        toast(data && data.ok ? 'בוצע' : (data.error || 'בוצע'));
+      }catch(e){
+        render(String(e)); statusEl.textContent='❗ שגיאה'; toast('שגיאת רשת/שרת');
+      }
+    }
+    document.getElementById('runText').onclick = ()=> call({ text: nl.value.trim() });
+    document.getElementById('today').onclick  = ()=> { const d0=new Date(); d0.setHours(0,0,0,0); const d1=new Date(d0); d1.setDate(d1.getDate()+1); call({ action:'findEvents', options:{ timeMin:d0.toISOString(), timeMax:d1.toISOString(), maxResults:50 } }); };
+    document.getElementById('selfTest').onclick= ()=> call({ action:'selfTest' });
+    document.getElementById('clear').onclick   = ()=> { nl.value=''; out.textContent='(נוקה)'; list.innerHTML=''; };
+    if('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(()=>{});
+  </script>
+</body>
+</html>
