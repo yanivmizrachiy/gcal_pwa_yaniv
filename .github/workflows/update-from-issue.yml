@@ -1,0 +1,87 @@
+name: Update via Issue (apply to gh-pages)
+
+on:
+  issues:
+    types: [opened, edited]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  apply:
+    if: >
+      contains(github.event.issue.title, 'Update PWA') ||
+      (github.event_name == 'issue_comment' && contains(github.event.issue.title, 'Update PWA'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout default branch
+        uses: actions/checkout@v4
+
+      - name: Ensure gh-pages branch exists
+        run: |
+          git fetch origin gh-pages || true
+          if git branch -a | grep -q "remotes/origin/gh-pages"; then
+            git checkout gh-pages
+          else
+            git checkout --orphan gh-pages
+            rm -rf *
+            echo "<!doctype html><meta charset='utf-8'><title>Init</title>OK" > index.html
+            git add -A
+            git commit -m "init gh-pages"
+            git push origin gh-pages
+          fi
+
+      - name: Parse Issue body -> files
+        id: parse
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const core = require('@actions/core');
+            const body = context.payload.issue.body || '';
+            const regex = /```file:([^`\n]+)\n([\s\S]*?)```/g;
+            let m, files = [];
+            while ((m = regex.exec(body)) !== null) {
+              files.push({ path: m[1].trim(), content: m[2] });
+            }
+            if (files.length === 0) {
+              core.setFailed('No file blocks found. Use ```file:NAME``` blocks.');
+            }
+            core.setOutput('files', JSON.stringify(files));
+            core.setOutput('count', String(files.length));
+
+      - name: Write files
+        run: |
+          node -e "
+          const fs=require('fs'), path=require('path');
+          const files=JSON.parse(process.env.FILES_JSON||'[]');
+          for(const f of files){
+            const p=f.path.trim();
+            fs.mkdirSync(path.dirname(p), {recursive:true});
+            fs.writeFileSync(p, f.content.replace(/\r\n/g,'\n'));
+            console.log('Wrote', p, '('+f.content.length+' bytes)');
+          }"
+        env:
+          FILES_JSON: ${{ steps.parse.outputs.files }}
+
+      - name: Commit & push
+        run: |
+          git config user.name  "auto-bot"
+          git config user.email "auto-bot@users.noreply.github.com"
+          git add -A
+          git commit -m "[auto-update] Apply Issue files to gh-pages" || echo "no changes"
+          git push origin gh-pages
+
+      - name: Comment result
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const count = core.getInput('count') || 'N/A';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `✅ Updated **gh-pages** from Issue. Files: ${count}\n\nSite: https://${context.repo.owner}.github.io/${context.repo.repo}`
+            });
