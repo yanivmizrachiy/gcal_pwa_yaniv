@@ -1,3 +1,4 @@
+# Production-ready workflow: deploy Google Apps Script from Issue titled "Update GAS"
 name: GAS Deploy from Issue
 
 on:
@@ -217,27 +218,24 @@ Status: ${status}
 
 **clasp push**
 Exit code: ${push_rc:-(n/a)}
-
 \`\`\`log
 $(sed -n '1,100p' /tmp/push_log_trim.txt || true)
 \`\`\`
 
 **clasp deploy**
 Exit code: ${deploy_rc:-(n/a)}
-
 \`\`\`log
 $(sed -n '1,100p' /tmp/deploy_log_trim.txt || true)
 \`\`\`
 
 **Selftest**
 $( [ "${selftest_skipped}" = "true" ] && echo "skipped (no EXEC_URL)" || echo "HTTP code: ${selftest_code:-(n/a)}" )
-
 \`\`\`json
 ${selftest_body:-}
 \`\`\`
 
 ---
-Posted by GitHub Actions — full run logs are available in the Actions tab.
+Posted by GitHub Actions.
 EOF
           echo "comment_file=/tmp/comment.post.md" >> $GITHUB_OUTPUT
 
@@ -251,5 +249,4 @@ EOF
 
       - name: Done (console log)
         if: always()
-        run: |
-          echo "GAS deploy workflow completed for issue #${{ github.event.issue.number }}"
+        run: echo "GAS deploy workflow finished for issue #${{ github.event.issue.number }}"
