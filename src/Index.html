@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>יומן חכם – עורך אירועים</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+      background: #0d1528;
+      color: #e7ecf5;
+      padding: 16px;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    
+    h1 {
+      color: #5b9eff;
+      margin-bottom: 20px;
+      font-size: 24px;
+    }
+    
+    .controls {
+      background: #1a2642;
+      border: 1px solid #2d3f5f;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    
+    .form-row {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+    
+    .form-group {
+      flex: 1;
+      min-width: 200px;
+    }
+    
+    label {
+      display: block;
+      margin-bottom: 6px;
+      color: #9fb4d9;
+      font-size: 14px;
+    }
+    
+    input, textarea, button {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid #2d3f5f;
+      background: #0d1528;
+      color: #e7ecf5;
+      font-size: 14px;
+      font-family: inherit;
+    }
+    
+    textarea {
+      resize: vertical;
+      min-height: 60px;
+    }
+    
+    button {
+      background: #1b3a6b;
+      border-color: #2e4c86;
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    
+    button:hover {
+      background: #2a4a7b;
+    }
+    
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    .btn-primary {
+      background: #2563eb;
+      border-color: #3b82f6;
+    }
+    
+    .btn-primary:hover {
+      background: #3b82f6;
+    }
+    
+    .btn-danger {
+      background: #dc2626;
+      border-color: #ef4444;
+    }
+    
+    .btn-danger:hover {
+      background: #ef4444;
+    }
+    
+    .events-list {
+      background: #1a2642;
+      border: 1px solid #2d3f5f;
+      border-radius: 12px;
+      padding: 20px;
+    }
+    
+    .event-card {
+      background: #0d1528;
+      border: 1px solid #2d3f5f;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 12px;
+      transition: border-color 0.2s;
+    }
+    
+    .event-card:hover {
+      border-color: #4a6080;
+    }
+    
+    .event-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #5b9eff;
+      margin-bottom: 8px;
+    }
+    
+    .event-details {
+      color: #9fb4d9;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    
+    .event-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    
+    .event-actions button {
+      flex: 1;
+    }
+    
+    .message {
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      border: 1px solid;
+    }
+    
+    .message.success {
+      background: rgba(34, 197, 94, 0.1);
+      border-color: #22c55e;
+      color: #4ade80;
+    }
+    
+    .message.error {
+      background: rgba(239, 68, 68, 0.1);
+      border-color: #ef4444;
+      color: #f87171;
+    }
+    
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #9fb4d9;
+    }
+    
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: #6b7c95;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>📅 יומן חכם – עורך אירועים</h1>
+    
+    <div id="messageContainer"></div>
+    
+    <div class="controls">
+      <h2 style="margin-bottom: 16px; font-size: 18px;">טען אירועים</h2>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="startDate">מתאריך:</label>
+          <input type="date" id="startDate">
+        </div>
+        <div class="form-group">
+          <label for="endDate">עד תאריך:</label>
+          <input type="date" id="endDate">
+        </div>
+      </div>
+      <button id="loadEventsBtn" class="btn-primary">טען אירועים</button>
+    </div>
+    
+    <div class="controls">
+      <h2 style="margin-bottom: 16px; font-size: 18px;">אירוע חדש</h2>
+      <div class="form-group" style="margin-bottom: 12px;">
+        <label for="newTitle">כותרת:</label>
+        <input type="text" id="newTitle" placeholder="שם האירוע">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="newStart">התחלה:</label>
+          <input type="datetime-local" id="newStart">
+        </div>
+        <div class="form-group">
+          <label for="newEnd">סיום:</label>
+          <input type="datetime-local" id="newEnd">
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom: 12px;">
+        <label for="newLocation">מיקום:</label>
+        <input type="text" id="newLocation" placeholder="מיקום (אופציונלי)">
+      </div>
+      <div class="form-group" style="margin-bottom: 12px;">
+        <label for="newDescription">תיאור:</label>
+        <textarea id="newDescription" placeholder="תיאור האירוע (אופציונלי)"></textarea>
+      </div>
+      <button id="createEventBtn" class="btn-primary">צור אירוע</button>
+    </div>
+    
+    <div class="events-list">
+      <h2 style="margin-bottom: 16px; font-size: 18px;">אירועים</h2>
+      <div id="eventsContainer" class="loading">טוען...</div>
+    </div>
+  </div>
+
+  <script>
+    /**
+     * FIX: Properly distinguish between DOM events and Calendar events
+     * DOM events (e.g., button clicks) are handled with 'e' or 'event'
+     * Calendar events from Google Calendar API are handled separately
+     */
+    
+    // Set default date range (today to 30 days from now)
+    const today = new Date();
+    const futureDate = new Date(today);
+    futureDate.setDate(futureDate.getDate() + 30);
+    
+    document.getElementById('startDate').valueAsDate = today;
+    document.getElementById('endDate').valueAsDate = futureDate;
+    
+    // Set default times for new event
+    const now = new Date();
+    now.setMinutes(0);
+    const later = new Date(now);
+    later.setHours(later.getHours() + 1);
+    
+    document.getElementById('newStart').value = formatDateTimeLocal(now);
+    document.getElementById('newEnd').value = formatDateTimeLocal(later);
+    
+    function formatDateTimeLocal(date) {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      return `${year}-${month}-${day}T${hours}:${minutes}`;
+    }
+    
+    function showMessage(text, type = 'success') {
+      const container = document.getElementById('messageContainer');
+      const message = document.createElement('div');
+      message.className = `message ${type}`;
+      message.textContent = text;
+      container.appendChild(message);
+      
+      setTimeout(() => {
+        message.remove();
+      }, 5000);
+    }
+    
+    function renderEvents(events) {
+      const container = document.getElementById('eventsContainer');
+      
+      if (!events || events.length === 0) {
+        container.innerHTML = '<div class="empty-state">אין אירועים לתצוגה</div>';
+        return;
+      }
+      
+      container.innerHTML = '';
+      
+      // FIX: Use 'calendarEvent' or 'calEvent' for calendar event objects
+      // NOT 'ev' which might be confused with DOM events
+      events.forEach(function(calendarEvent) {
+        const card = document.createElement('div');
+        card.className = 'event-card';
+        
+        const title = document.createElement('div');
+        title.className = 'event-title';
+        title.textContent = calendarEvent.title || 'ללא כותרת';
+        
+        const details = document.createElement('div');
+        details.className = 'event-details';
+        
+        const start = new Date(calendarEvent.start);
+        const end = new Date(calendarEvent.end);
+        
+        details.innerHTML = `
+          <div><strong>התחלה:</strong> ${start.toLocaleString('he-IL')}</div>
+          <div><strong>סיום:</strong> ${end.toLocaleString('he-IL')}</div>
+          ${calendarEvent.location ? `<div><strong>מיקום:</strong> ${calendarEvent.location}</div>` : ''}
+          ${calendarEvent.description ? `<div><strong>תיאור:</strong> ${calendarEvent.description}</div>` : ''}
+        `;
+        
+        const actions = document.createElement('div');
+        actions.className = 'event-actions';
+        
+        // FIX: For button click events, use standard DOM event parameter names
+        // The htmlLink comes from the calendarEvent object, not from a DOM event
+        if (calendarEvent.htmlLink) {
+          const viewBtn = document.createElement('button');
+          viewBtn.textContent = 'פתח ביומן';
+          // FIX: DOM event listener - parameter is a DOM event (not a Calendar event)
+          viewBtn.addEventListener('click', function(domEvent) {
+            // FIX: Use calendarEvent.htmlLink (from Calendar API)
+            // NOT domEvent.getHtmlLink() (DOM events don't have this method)
+            window.open(calendarEvent.htmlLink, '_blank');
+          });
+          actions.appendChild(viewBtn);
+        }
+        
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'btn-danger';
+        deleteBtn.textContent = 'מחק';
+        // FIX: DOM event listener - parameter is a DOM event
+        deleteBtn.addEventListener('click', function(domEvent) {
+          // FIX: Use calendarEvent.id (from Calendar API)
+          // NOT domEvent.id (DOM events don't have our custom id)
+          if (confirm('האם אתה בטוח שברצונך למחוק את האירוע?')) {
+            deleteEvent(calendarEvent.id);
+          }
+        });
+        actions.appendChild(deleteBtn);
+        
+        card.appendChild(title);
+        card.appendChild(details);
+        card.appendChild(actions);
+        container.appendChild(card);
+      });
+    }
+    
+    function loadEvents() {
+      const startDate = document.getElementById('startDate').value;
+      const endDate = document.getElementById('endDate').value;
+      
+      if (!startDate || !endDate) {
+        showMessage('אנא בחר טווח תאריכים', 'error');
+        return;
+      }
+      
+      const container = document.getElementById('eventsContainer');
+      container.innerHTML = '<div class="loading">טוען אירועים...</div>';
+      
+      // FIX: Call server function - the returned data contains Calendar events
+      google.script.run
+        .withSuccessHandler(function(calendarEvents) {
+          // FIX: calendarEvents is an array of Calendar event objects
+          renderEvents(calendarEvents);
+          showMessage('אירועים נטענו בהצלחה');
+        })
+        .withFailureHandler(function(error) {
+          container.innerHTML = '<div class="empty-state">שגיאה בטעינת אירועים</div>';
+          showMessage('שגיאה: ' + error.message, 'error');
+        })
+        .getCalendarEvents(startDate, endDate);
+    }
+    
+    function createEvent() {
+      const title = document.getElementById('newTitle').value;
+      const start = document.getElementById('newStart').value;
+      const end = document.getElementById('newEnd').value;
+      const location = document.getElementById('newLocation').value;
+      const description = document.getElementById('newDescription').value;
+      
+      if (!title || !start || !end) {
+        showMessage('אנא מלא את כל השדות החובה', 'error');
+        return;
+      }
+      
+      const btn = document.getElementById('createEventBtn');
+      btn.disabled = true;
+      btn.textContent = 'יוצר...';
+      
+      const eventData = {
+        title: title,
+        start: start,
+        end: end,
+        location: location,
+        description: description
+      };
+      
+      google.script.run
+        .withSuccessHandler(function(result) {
+          btn.disabled = false;
+          btn.textContent = 'צור אירוע';
+          
+          if (result.success) {
+            showMessage('האירוע נוצר בהצלחה!');
+            // Clear form
+            document.getElementById('newTitle').value = '';
+            document.getElementById('newLocation').value = '';
+            document.getElementById('newDescription').value = '';
+            // Reload events
+            loadEvents();
+          } else {
+            showMessage('שגיאה: ' + result.error, 'error');
+          }
+        })
+        .withFailureHandler(function(error) {
+          btn.disabled = false;
+          btn.textContent = 'צור אירוע';
+          showMessage('שגיאה: ' + error.message, 'error');
+        })
+        .createCalendarEvent(eventData);
+    }
+    
+    function deleteEvent(eventId) {
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.success) {
+            showMessage('האירוע נמחק בהצלחה');
+            loadEvents();
+          } else {
+            showMessage('שגיאה: ' + result.error, 'error');
+          }
+        })
+        .withFailureHandler(function(error) {
+          showMessage('שגיאה: ' + error.message, 'error');
+        })
+        .deleteCalendarEvent(eventId);
+    }
+    
+    // FIX: DOM event listeners - these receive DOM events, not Calendar events
+    document.getElementById('loadEventsBtn').addEventListener('click', function(domEvent) {
+      loadEvents();
+    });
+    
+    document.getElementById('createEventBtn').addEventListener('click', function(domEvent) {
+      createEvent();
+    });
+    
+    // Load events on page load
+    loadEvents();
+  </script>
+</body>
+</html>
