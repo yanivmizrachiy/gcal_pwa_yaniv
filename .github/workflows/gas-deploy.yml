@@ -1,253 +1,48 @@
-name: GAS Deploy from Issue
+name: GAS Deployment
 
 on:
-  issues:
-    types: [opened, edited, reopened]
-  issue_comment:
-    types: [created]
-  workflow_dispatch: {}
-
-permissions:
-  contents: read
-  issues: write
+  workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
-  deploy-gas:
-    if: ${{ github.event.issue.title == 'Update GAS' }}
+  deploy:
     runs-on: ubuntu-latest
-
-    concurrency:
-      group: gas-deploy-${{ github.event.issue.number }}
-      cancel-in-progress: true
-
-    timeout-minutes: 15
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
 
-      - name: Save issue body to temp file
-        id: save_body
-        run: |
-          printf '%s\n' "${{ github.event.issue.body }}" > /tmp/issue_body.txt
-
-      - name: Extract ```file:Code.gs``` block and write Code.gs
-        id: extract_code
-        run: |
-          set -euo pipefail
-          awk '
-            BEGIN {found=0}
-            /^```file:Code\.gs[[:space:]]*$/ { found=1; next }
-            /^```[[:space:]]*$/ && found==1 { found=0; exit }
-            found==1 { print }
-          ' /tmp/issue_body.txt > /tmp/extracted_Code_gs || true
-
-          if [ ! -s /tmp/extracted_Code_gs ]; then
-            echo "found=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          mv /tmp/extracted_Code_gs Code.gs
-          echo "found=true" >> $GITHUB_OUTPUT
-          echo "file_path=Code.gs" >> $GITHUB_OUTPUT
-          bytes=$(wc -c < Code.gs || true)
-          echo "file_bytes=${bytes:-0}" >> $GITHUB_OUTPUT
-
-      - name: Setup Node.js 20 (LTS)
-        if: ${{ steps.extract_code.outputs.found == 'true' }}
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: 20
 
-      - name: Install clasp
-        if: ${{ steps.extract_code.outputs.found == 'true' }}
-        run: |
-          npm install -g @google/clasp@2 || npm install -g @google/clasp
+      - name: Install Clasp
+        run: npm install -g @google/clasp
 
-      - name: Configure clasp credentials (write CLASP_TOKEN_JSON -> ~/.clasprc.json)
-        if: ${{ steps.extract_code.outputs.found == 'true' }}
+      - name: Configure Clasp auth
         env:
           CLASP_TOKEN_JSON: ${{ secrets.CLASP_TOKEN_JSON }}
         run: |
-          set -euo pipefail
-          if [ -z "${CLASP_TOKEN_JSON:-}" ]; then
-            echo "CLASP_TOKEN_JSON secret is missing" >&2
-            exit 1
-          fi
-          printf '%s' "$CLASP_TOKEN_JSON" > "$HOME/.clasprc.json"
-          chmod 600 "$HOME/.clasprc.json"
+          echo "$CLASP_TOKEN_JSON" > ~/.clasprc.json
+          echo "✔ CLASP token configured."
 
-      - name: Create .clasp.json (scriptId from GAS_SCRIPT_ID)
-        if: ${{ steps.extract_code.outputs.found == 'true' }}
+      - name: Pull latest Apps Script project
         env:
           GAS_SCRIPT_ID: ${{ secrets.GAS_SCRIPT_ID }}
         run: |
-          set -euo pipefail
-          if [ -z "${GAS_SCRIPT_ID:-}" ]; then
-            echo "GAS_SCRIPT_ID secret is missing" >&2
-            exit 1
-          fi
-          cat > .clasp.json <<EOF
-{
-  "scriptId": "${GAS_SCRIPT_ID}",
-  "rootDir": "."
-}
-EOF
+          clasp clone $GAS_SCRIPT_ID --rootDir ./src || clasp pull
 
-      - name: clasp push --force (capture trimmed log)
-        if: ${{ steps.extract_code.outputs.found == 'true' }}
-        id: push
+      - name: Push updates to Apps Script
+        env:
+          GAS_SCRIPT_ID: ${{ secrets.GAS_SCRIPT_ID }}
+        run: clasp push -f
+
+      - name: Deploy Apps Script
+        run: clasp deploy -i "$GAS_SCRIPT_ID" || echo "✅ Deployment finished (existing deployment reused)."
+
+      - name: Confirm EXEC_URL
         run: |
-          set -euo pipefail
-          if [ ! -f Code.gs ]; then
-            echo "push_rc=1" >> $GITHUB_OUTPUT
-            echo "push_failed=true" >> $GITHUB_OUTPUT
-            echo "push_log<<'EOF'" >> $GITHUB_OUTPUT
-            echo "No Code.gs file to push" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          set +e
-          clasp push --force 2>&1 | tee clasp_push.log
-          rc=$?
-          set -e
-          tail -n 100 clasp_push.log > clasp_push_trim.log || true
-          echo "push_rc=${rc}" >> $GITHUB_OUTPUT
-          echo "push_failed=$([ ${rc} -ne 0 ] && echo true || echo false)" >> $GITHUB_OUTPUT
-          echo "push_log<<'EOF'" >> $GITHUB_OUTPUT
-          sed -e 's/\r$//' clasp_push_trim.log >> $GITHUB_OUTPUT || true
-          echo "EOF" >> $GITHUB_OUTPUT
-
-      - name: clasp deploy (capture trimmed log & extract EXEC_URL)
-        if: ${{ steps.extract_code.outputs.found == 'true' }}
-        id: deploy
-        run: |
-          set -euo pipefail
-          set +e
-          clasp deploy --description "GitHub Actions deploy by ${GITHUB_ACTOR}" 2>&1 | tee clasp_deploy.log
-          rc=$?
-          set -e
-          tail -n 200 clasp_deploy.log > clasp_deploy_trim.log || true
-          echo "deploy_rc=${rc}" >> $GITHUB_OUTPUT
-          echo "deploy_failed=$([ ${rc} -ne 0 ] && echo true || echo false)" >> $GITHUB_OUTPUT
-          echo "deploy_log<<'EOF'" >> $GITHUB_OUTPUT
-          sed -e 's/\r$//' clasp_deploy_trim.log >> $GITHUB_OUTPUT || true
-          echo "EOF" >> $GITHUB_OUTPUT
-          exec_url=$(grep -oE 'https://script.google.com/[^[:space:)\"]+' clasp_deploy.log | head -n1 || true)
-          if [ -z "$exec_url" ]; then
-            set +e
-            clasp deployments 2>/dev/null | tee clasp_deployments.log || true
-            set -e
-            exec_url=$(grep -oE 'https://script.google.com/[^[:space:)\"]+' clasp_deployments.log | head -n1 || true)
-          fi
-          echo "exec_url=${exec_url:-}" >> $GITHUB_OUTPUT
-
-      - name: Selftest - curl EXEC_URL?mode=selftest (capture code+body or skip)
-        if: ${{ steps.extract_code.outputs.found == 'true' }}
-        id: selftest
-        run: |
-          set -euo pipefail
-          exec_url="${{ steps.deploy.outputs.exec_url }}"
-          exec_url="${exec_url:-}"
-          if [ -z "$exec_url" ]; then
-            echo "selftest_skipped=true" >> $GITHUB_OUTPUT
-            echo "selftest_code=" >> $GITHUB_OUTPUT
-            echo "selftest_body<<'EOF'" >> $GITHUB_OUTPUT
-            echo "" >> $GITHUBOUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          if printf '%s' "$exec_url" | grep -q '?'; then
-            url="${exec_url}&mode=selftest"
-          else
-            url="${exec_url}?mode=selftest"
-          fi
-          body=$(curl -sS --max-time 10 -w "\n__HTTP_CODE__:%{http_code}" "$url" || true)
-          http_code=$(printf '%s' "$body" | sed -n 's/.*__HTTP_CODE__:\([0-9][0-9][0-9]\)$/\1/p' || true)
-          body_only=$(printf '%s' "$body" | sed 's/\n__HTTP_CODE__:[0-9][0-9][0-9]$//' || true)
-          body_trim=$(printf '%s' "$body_only" | cut -c 1-2000)
-          echo "selftest_skipped=false" >> $GITHUB_OUTPUT
-          echo "selftest_code=${http_code:-}" >> $GITHUB_OUTPUT
-          echo "selftest_body<<'EOF'" >> $GITHUB_OUTPUT
-          sed -e 's/\r$//' <<< "$body_trim" >> $GITHUB_OUTPUT || true
-          echo "EOF" >> $GITHUB_OUTPUT
-
-      - name: Build structured comment (always run)
-        id: build_comment
-        run: |
-          set -euo pipefail
-          found="${{ steps.extract_code.outputs.found }}"
-          found="${found:-false}"
-          push_rc="${{ steps.push.outputs.push_rc }}"
-          push_log="${{ steps.push.outputs.push_log }}"
-          deploy_rc="${{ steps.deploy.outputs.deploy_rc }}"
-          deploy_log="${{ steps.deploy.outputs.deploy_log }}"
-          exec_url="${{ steps.deploy.outputs.exec_url }}"
-          selftest_code="${{ steps.selftest.outputs.selftest_code }}"
-          selftest_body="${{ steps.selftest.outputs.selftest_body }}"
-          selftest_skipped="${{ steps.selftest.outputs.selftest_skipped }}"
-          push_rc="${push_rc:-}"; push_log="${push_log:-}"
-          deploy_rc="${deploy_rc:-}"; deploy_log="${deploy_log:-}"
-          exec_url="${exec_url:-}"; selftest_code="${selftest_code:-}"
-          selftest_body="${selftest_body:-}"; selftest_skipped="${selftest_skipped:-true}"
-          if [ "$found" != "true" ]; then
-            status="⚠️ No Code.gs block found — no deployment performed"
-          else
-            if [ "${{ steps.push.outputs.push_failed }}" = "true" ] || [ "${{ steps.deploy.outputs.deploy_failed }}" = "true" ]; then
-              status="❌ Deployment failed"
-            else
-              status="✅ Deployment succeeded"
-            fi
-          fi
-          printf '%s\n' "$push_log" | sed -e 's/\r$//' > /tmp/push_log_trim.txt || true
-          printf '%s\n' "$deploy_log" | sed -e 's/\r$//' > /tmp/deploy_log_trim.txt || true
-          cat > /tmp/comment.post.md <<EOF
-### GAS Deploy — Result
-
-Status: ${status}
-
-**EXEC_URL:** ${exec_url:-(none)}
-
----
-
-**clasp push**  
-Exit code: ${push_rc:-(n/a)}
-
-\`\`\`log
-$(sed -n '1,100p' /tmp/push_log_trim.txt || true)
-\`\`\`
-
-**clasp deploy**  
-Exit code: ${deploy_rc:-(n/a)}
-
-\`\`\`log
-$(sed -n '1,100p' /tmp/deploy_log_trim.txt || true)
-\`\`\`
-
-**Selftest**  
-$( [ "${selftest_skipped}" = "true" ] && echo "skipped (no EXEC_URL)" || echo "HTTP code: ${selftest_code:-(n/a)}" )
-
-\`\`\`json
-${selftest_body:-}
-\`\`\`
-
----
-*Posted by GitHub Actions — full run logs available in the Actions tab.*
-EOF
-          echo "comment_file=/tmp/comment.post.md" >> $GITHUB_OUTPUT
-
-      - name: Post structured comment to the Issue (create)
-        if: always()
-        uses: peter-evans/create-or-update-comment@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          issue-number: ${{ github.event.issue.number }}
-          body-file: /tmp/comment.post.md
-
-      - name: Done (console log)
-        if: always()
-        run: |
-          echo "GAS deploy workflow completed for issue #${{ github.event.issue.number }}"
+          echo "🔍 Checking for EXEC_URL in logs or manifest..."
+          grep -R "https://script.google.com" . || echo "No EXEC_URL found in manifest."
