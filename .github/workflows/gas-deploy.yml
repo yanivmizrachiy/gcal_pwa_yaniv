@@ -3,46 +3,106 @@ name: GAS Deployment
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
+    branches: [ main ]
+
+permissions:
+  contents: write
+  actions: write
+  issues: write
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Install Clasp
-        run: npm install -g @google/clasp
+      - name: Install clasp
+        run: npm i -g @google/clasp
 
-      - name: Configure Clasp auth
+      - name: Configure clasp auth
         env:
           CLASP_TOKEN_JSON: ${{ secrets.CLASP_TOKEN_JSON }}
         run: |
           echo "$CLASP_TOKEN_JSON" > ~/.clasprc.json
-          echo "✔ CLASP token configured."
+          echo "✔ wrote ~/.clasprc.json"
 
-      - name: Pull latest Apps Script project
+      - name: Configure .clasp.json (scriptId + rootDir)
         env:
           GAS_SCRIPT_ID: ${{ secrets.GAS_SCRIPT_ID }}
         run: |
-          clasp clone $GAS_SCRIPT_ID --rootDir ./src || clasp pull
+          cat > .clasp.json <<JSON
+          {
+            "scriptId": "$GAS_SCRIPT_ID",
+            "rootDir": "src"
+          }
+          JSON
+          mkdir -p src
+          echo "✔ wrote .clasp.json (scriptId set)"
 
-      - name: Push updates to Apps Script
-        env:
-          GAS_SCRIPT_ID: ${{ secrets.GAS_SCRIPT_ID }}
-        run: clasp push -f
-
-      - name: Deploy Apps Script
-        run: clasp deploy -i "$GAS_SCRIPT_ID" || echo "✅ Deployment finished (existing deployment reused)."
-
-      - name: Confirm EXEC_URL
+      - name: Push source to Apps Script
         run: |
-          echo "🔍 Checking for EXEC_URL in logs or manifest..."
-          grep -R "https://script.google.com" . || echo "No EXEC_URL found in manifest."
+          # If there is no src yet in repo, keep it empty; clasp will just push current project files
+          clasp push -f
+          echo "✔ clasp push done"
+
+      - name: Version & Deploy
+        run: |
+          TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          clasp version "ci: $TS" || true
+          clasp deploy --description "ci: $TS" || true
+          echo "✔ deploy attempted (new or existing deployment)"
+
+      - name: Locate EXEC_URL (primary: clasp open --webapp)
+        id: execurl1
+        continue-on-error: true
+        run: |
+          url="$(clasp open --webapp 2>/dev/null | grep -Eo 'https://script\.google\.com/[^\ ]+|https://script\.googleusercontent\.com/[^\ ]+' | head -n1 || true)"
+          echo "url=$url" >> $GITHUB_OUTPUT
+          echo "Primary open --webapp → $url"
+
+      - name: Locate EXEC_URL (fallback: clasp deployments)
+        id: execurl2
+        if: steps.execurl1.outputs.url == ''
+        run: |
+          url="$(clasp deployments 2>/dev/null | grep -Eo 'https://script\.google\.com/[^\ ]+|https://script\.googleusercontent\.com/[^\ ]+' | head -n1 || true)"
+          echo "url=$url" >> $GITHUB_OUTPUT
+          echo "Fallback deployments → $url"
+
+      - name: Finalize EXEC_URL
+        id: execurl
+        run: |
+          url="${{ steps.execurl1.outputs.url }}"
+          if [ -z "$url" ]; then url="${{ steps.execurl2.outputs.url }}"; fi
+          echo "EXEC_URL=$url" | tee -a $GITHUB_STEP_SUMMARY
+          if [ -z "$url" ]; then
+            echo "No EXEC_URL found in clasp output" >&2
+            exit 1
+          fi
+          echo "url=$url" >> $GITHUB_OUTPUT
+
+      - name: Selftest (GET ?mode=selftest)
+        id: selftest
+        run: |
+          exec_url="${{ steps.execurl.outputs.url }}"
+          sep='?'
+          echo "$exec_url" | grep -q '?' && sep='&' || true
+          test_url="${exec_url}${sep}mode=selftest"
+          echo "Selftest URL: $test_url" | tee -a $GITHUB_STEP_SUMMARY
+          code=$(curl -sS -o /tmp/selftest.json -w "%{http_code}" "$test_url")
+          echo "HTTP $code" | tee -a $GITHUB_STEP_SUMMARY
+          echo '```json' >> $GITHUB_STEP_SUMMARY
+          sed -n '1,200p' /tmp/selftest.json >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          [ "$code" = "200" ] || (echo "Selftest failed (HTTP $code)"; exit 1)
+
+      - name: Print summary to log
+        run: |
+          echo "EXEC_URL: ${{ steps.execurl.outputs.url }}"
+          echo "Selftest OK ✅"
