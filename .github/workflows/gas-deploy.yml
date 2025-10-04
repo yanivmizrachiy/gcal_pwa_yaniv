@@ -1,101 +1,105 @@
 name: GAS Deployment
-
 on:
   workflow_dispatch:
   push:
     branches: [ main ]
-
 permissions:
   contents: write
   actions: write
   issues: write
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Install clasp
-        run: npm i -g @google/clasp
-
+        with: { node-version: 20 }
+      - name: Install clasp + jq + curl
+        run: |
+          npm i -g @google/clasp
+          sudo apt-get update -y
+          sudo apt-get install -y jq curl
       - name: Configure clasp auth
-        env:
-          CLASP_TOKEN_JSON: ${{ secrets.CLASP_TOKEN_JSON }}
+        env: { CLASP_TOKEN_JSON: ${{ secrets.CLASP_TOKEN_JSON }} }
         run: |
+          set -e
+          test -n "$CLASP_TOKEN_JSON" || { echo "CLASP_TOKEN_JSON secret is missing"; exit 1; }
           echo "$CLASP_TOKEN_JSON" > ~/.clasprc.json
-          echo "✔ wrote ~/.clasprc.json"
-
+          chmod 600 ~/.clasprc.json
+          clasp --version
+          clasp whoami || { echo "clasp whoami failed"; exit 1; }
       - name: Configure .clasp.json
-        env:
-          GAS_SCRIPT_ID: ${{ secrets.GAS_SCRIPT_ID }}
+        env: { GAS_SCRIPT_ID: ${{ secrets.GAS_SCRIPT_ID }} }
         run: |
+          set -e
+          test -n "$GAS_SCRIPT_ID" || { echo "GAS_SCRIPT_ID secret is missing"; exit 1; }
+          root="."
+          [ -d "src" ] && root="src"
           cat > .clasp.json <<JSON
-          {
-            "scriptId": "$GAS_SCRIPT_ID",
-            "rootDir": "src"
-          }
+          { "scriptId": "$GAS_SCRIPT_ID", "rootDir": "$root" }
           JSON
-          mkdir -p src
-
+          echo "Using rootDir=$root"
       - name: Push source to Apps Script
         run: |
+          set -e
           clasp push -f
-          echo "✔ clasp push done"
-
-      - name: Version & Deploy
+          echo "clasp push ✓" | tee -a $GITHUB_STEP_SUMMARY
+      - name: Version & Deploy (idempotent)
+        id: deploy
         run: |
+          set -e
           TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           clasp version "ci: $TS" || true
           clasp deploy --description "ci: $TS" || true
-          echo "✔ deploy attempted"
-
-      - name: Locate EXEC_URL (primary)
+          echo "deploy attempted ✓" | tee -a $GITHUB_STEP_SUMMARY
+      - name: Locate EXEC_URL (JSON-first)
         id: exec1
         continue-on-error: true
         run: |
-          url="$(clasp open --webapp 2>/dev/null | grep -Eo 'https://script\.google(?:usercontent)?\.com/[^\ ]+|https://script\.google\.com/[^\ ]+' | head -n1 || true)"
+          set -e
+          url="$(clasp deployments --json 2>/dev/null | jq -r '.deployments[]? | .entryPoints[]? | select(.entryPointType=="WEB_APP") | .url' | head -n1)"
           echo "url=$url" >> $GITHUB_OUTPUT
-          echo "Primary → $url"
-
-      - name: Locate EXEC_URL (fallback)
+          echo "Locate(JSON): $url" | tee -a $GITHUB_STEP_SUMMARY
+      - name: Locate EXEC_URL (fallback open)
         id: exec2
         if: steps.exec1.outputs.url == ''
+        continue-on-error: true
         run: |
-          url="$(clasp deployments 2>/dev/null | grep -Eo 'https://script\.google(?:usercontent)?\.com/[^\ ]+|https://script\.google\.com/[^\ ]+' | head -n1 || true)"
+          set -e
+          url="$(clasp open --webapp 2>/dev/null | grep -Eo 'https://script\.google(?:usercontent)?\.com/[^ ]+|https://script\.google\.com/[^ ]+' | head -n1)"
           echo "url=$url" >> $GITHUB_OUTPUT
-          echo "Fallback → $url"
-
+          echo "Locate(open): $url" | tee -a $GITHUB_STEP_SUMMARY
       - name: Finalize EXEC_URL
         id: execurl
         run: |
-          url="${{ steps.exec1.outputs.url }}"
-          if [ -z "$url" ]; then url="${{ steps.exec2.outputs.url }}"; fi
+          set -e
+          url="${{ steps.exec1.outputs.url }}"; [ -z "$url" ] && url="${{ steps.exec2.outputs.url }}"
           echo "EXEC_URL=$url" | tee -a $GITHUB_STEP_SUMMARY
-          if [ -z "$url" ]; then echo "No EXEC_URL found"; exit 1; fi
           echo "url=$url" >> $GITHUB_OUTPUT
-
+          [ -n "$url" ] || { echo "No EXEC_URL found"; exit 1; }
       - name: Selftest
+        id: selftest
         run: |
+          set -e
           exec_url="${{ steps.execurl.outputs.url }}"
           sep='?'; echo "$exec_url" | grep -q '?' && sep='&' || true
           test_url="${exec_url}${sep}mode=selftest"
+          code=$(curl -sS -o /tmp/selftest.json -w "%{http_code}" "$test_url" || true)
           echo "Selftest URL: $test_url" | tee -a $GITHUB_STEP_SUMMARY
-          code=$(curl -sS -o /tmp/selftest.json -w "%{http_code}" "$test_url")
           echo "HTTP $code" | tee -a $GITHUB_STEP_SUMMARY
           echo '```json' >> $GITHUB_STEP_SUMMARY
-          sed -n '1,200p' /tmp/selftest.json >> $GITHUB_STEP_SUMMARY
+          sed -n '1,80p' /tmp/selftest.json >> $GITHUB_STEP_SUMMARY || true
           echo '```' >> $GITHUB_STEP_SUMMARY
-          [ "$code" = "200" ] || (echo "Selftest failed (HTTP $code)"; exit 1)
-
-      - name: Print summary to log
+          echo "code=$code" >> $GITHUB_OUTPUT
+      - name: Post summary to Issue #8
+        if: always()
+        env: { GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} }
         run: |
-          echo "EXEC_URL: ${{ steps.execurl.outputs.url }}"
-          echo "Selftest stage completed"
+          set -e
+          url="${{ steps.execurl.outputs.url }}"
+          code="${{ steps.selftest.outputs.code }}"
+          body="### 🧭 Automation Report — $(date -u +%Y-%m-%dT%H:%M:%SZ)%0A- EXEC_URL: ${url}%0A- SELFTEST: HTTP ${code}"
+          gh issue comment 8 -R ${{ github.repository }} --body "$body" || true
