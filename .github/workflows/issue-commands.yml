@@ -11,7 +11,6 @@ permissions:
 jobs:
   handle:
     runs-on: ubuntu-latest
-
     steps:
       - name: Read command from issue
         id: cmd
@@ -20,108 +19,28 @@ jobs:
           BODY: ${{ github.event.issue.body }}
         run: |
           set -euo pipefail
+          echo "🟦 Reading issue: $TITLE"
+          echo "----------------------------------"
+          echo "$BODY"
+          echo "----------------------------------"
           found=""
+
           # normalize
           t="$(printf '%s\n' "$TITLE" | tr '[:upper:]' '[:lower:]')"
-          b="$(printf '%s\n' "$BODY"  | tr '[:upper:]' '[:lower:]')"
+          b="$(printf '%s\n' "$BODY" | tr '[:upper:]' '[:lower:]')"
 
-          # /deploy (בכותרת או בגוף)
-          if echo "$t" | grep -Eq '^(deploy/|/deploy)$' || echo "$b" | grep -Eq '(^|[[:space:]])/deploy([[:space:]]|$)'; then
-            echo "deploy=true" >> "$GITHUB_OUTPUT"
-            found=1
+          # detect keywords (for auto-deploy or update)
+          if echo "$t$b" | grep -Eq '(deploy|update)'; then
+            echo "deploy=true" >> $GITHUB_OUTPUT
+            found="1"
           fi
 
-          # /set exec_url <url>
-          url=""
-          if echo "$t" | grep -Eq '^set[[:space:]]+exec_url'; then
-            :
-          elif echo "$b" | grep -Eq '(^|[[:space:]])/set[[:space:]]+exec_url[[:space:]]+https?://'; then
-            :
-          else
-            # nothing
-            :
-          fi
-          # חילוץ ה-URL מהגוף אם קיים
-          url="$(printf '%s' "$BODY" | sed -nE 's#.*(/set[[:space:]]+exec_url[[:space:]]+)(https?://[^[:space:]]+).*#\2#p' | head -n1)"
-          if [ -n "$url" ]; then
-            echo "set_exec_url=true" >> "$GITHUB_OUTPUT"
-            echo "url=$url" >> "$GITHUB_OUTPUT"
-            found=1
+          if [ -z "$found" ]; then
+            echo "⚪️ No deploy command found."
           fi
 
-          if [ -z "${found:-}" ]; then
-            echo "none=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: No supported command → exit gracefully
-        if: ${{ steps.cmd.outputs.none == 'true' }}
-        run: echo "No supported issue command. Nothing to do."
-
-      # ---------- /deploy ----------
-      - name: Checkout gh-pages for deploy
-        if: ${{ steps.cmd.outputs.deploy == 'true' }}
-        uses: actions/checkout@v4
-        with:
-          ref: gh-pages
-
-      - name: Touch .last_deploy and commit
-        if: ${{ steps.cmd.outputs.deploy == 'true' }}
+      - name: Trigger GAS Deploy workflow
+        if: steps.cmd.outputs.deploy == 'true'
         run: |
-          set -e
-          date -u +"%Y-%m-%dT%H:%M:%SZ" > .last_deploy
-          git config user.name  "GitHub Actions"
-          git config user.email "actions@users.noreply.github.com"
-          git add -A
-          git commit -m "Deploy via Issue #${{ github.event.issue.number }}" || echo "Nothing to commit"
-          git push
-
-      - name: Comment back on deploy
-        if: ${{ steps.cmd.outputs.deploy == 'true' }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh issue comment ${{ github.event.issue.number }} --body ":rocket: Deploy touched \`gh-pages\`. Site: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
-
-      # ---------- /set exec_url <url> ----------
-      - name: Checkout gh-pages for exec_url update
-        if: ${{ steps.cmd.outputs.set_exec_url == 'true' }}
-        uses: actions/checkout@v4
-        with:
-          ref: gh-pages
-
-      - name: Update EXEC_URL in index.html
-        if: ${{ steps.cmd.outputs.set_exec_url == 'true' }}
-        env:
-          NEW_URL: ${{ steps.cmd.outputs.url }}
-        run: |
-          set -euo pipefail
-          test -f index.html || { echo "index.html not found on gh-pages"; exit 1; }
-
-          # 1) אם יש placeholder __EXEC_URL__ נחליף אותו
-          sed -i "s|__EXEC_URL__|${NEW_URL//|/\\|}|g" index.html
-
-          # 2) אם יש שורה const EXEC_URL = "…"; נחליף אותה
-          perl -0777 -pe 's#const\s+EXEC_URL\s*=\s*["'\"'"''][^"'\''"]*["'\"'"''];#const EXEC_URL = "'$NEW_URL'";#g' -i index.html
-
-          # 3) fallback: אם אין כלום – נזריק לפני </body>
-          if ! grep -q 'EXEC_URL' index.html; then
-            perl -0777 -pe 's#</body>#<script>const EXEC_URL = "'$NEW_URL'";</script></body>#' -i index.html
-          fi
-
-      - name: Commit & push exec_url change
-        if: ${{ steps.cmd.outputs.set_exec_url == 'true' }}
-        run: |
-          set -e
-          git config user.name  "GitHub Actions"
-          git config user.email "actions@users.noreply.github.com"
-          git add index.html
-          git commit -m "Set EXEC_URL via Issue #${{ github.event.issue.number }}" || echo "Nothing to commit"
-          git push
-
-      - name: Comment back with result
-        if: ${{ steps.cmd.outputs.set_exec_url == 'true' }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh issue comment ${{ github.event.issue.number }} --body ":white_check_mark: **EXEC_URL updated** to: `${{ steps.cmd.outputs.url }}`  
-          Live site: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
+          echo "🚀 Triggering GAS Deploy Action..."
+          gh workflow run gas-deploy.yml --ref main || echo "⚠️ Workflow trigger failed (might already be running)"
