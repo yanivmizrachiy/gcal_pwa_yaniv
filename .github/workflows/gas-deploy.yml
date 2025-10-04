@@ -33,7 +33,7 @@ jobs:
           echo "$CLASP_TOKEN_JSON" > ~/.clasprc.json
           echo "✔ wrote ~/.clasprc.json"
 
-      - name: Configure .clasp.json (scriptId + rootDir)
+      - name: Configure .clasp.json
         env:
           GAS_SCRIPT_ID: ${{ secrets.GAS_SCRIPT_ID }}
         run: |
@@ -44,11 +44,9 @@ jobs:
           }
           JSON
           mkdir -p src
-          echo "✔ wrote .clasp.json (scriptId set)"
 
       - name: Push source to Apps Script
         run: |
-          # If there is no src yet in repo, keep it empty; clasp will just push current project files
           clasp push -f
           echo "✔ clasp push done"
 
@@ -57,42 +55,37 @@ jobs:
           TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           clasp version "ci: $TS" || true
           clasp deploy --description "ci: $TS" || true
-          echo "✔ deploy attempted (new or existing deployment)"
+          echo "✔ deploy attempted"
 
-      - name: Locate EXEC_URL (primary: clasp open --webapp)
-        id: execurl1
+      - name: Locate EXEC_URL (primary)
+        id: exec1
         continue-on-error: true
         run: |
-          url="$(clasp open --webapp 2>/dev/null | grep -Eo 'https://script\.google\.com/[^\ ]+|https://script\.googleusercontent\.com/[^\ ]+' | head -n1 || true)"
+          url="$(clasp open --webapp 2>/dev/null | grep -Eo 'https://script\.google(?:usercontent)?\.com/[^\ ]+|https://script\.google\.com/[^\ ]+' | head -n1 || true)"
           echo "url=$url" >> $GITHUB_OUTPUT
-          echo "Primary open --webapp → $url"
+          echo "Primary → $url"
 
-      - name: Locate EXEC_URL (fallback: clasp deployments)
-        id: execurl2
-        if: steps.execurl1.outputs.url == ''
+      - name: Locate EXEC_URL (fallback)
+        id: exec2
+        if: steps.exec1.outputs.url == ''
         run: |
-          url="$(clasp deployments 2>/dev/null | grep -Eo 'https://script\.google\.com/[^\ ]+|https://script\.googleusercontent\.com/[^\ ]+' | head -n1 || true)"
+          url="$(clasp deployments 2>/dev/null | grep -Eo 'https://script\.google(?:usercontent)?\.com/[^\ ]+|https://script\.google\.com/[^\ ]+' | head -n1 || true)"
           echo "url=$url" >> $GITHUB_OUTPUT
-          echo "Fallback deployments → $url"
+          echo "Fallback → $url"
 
       - name: Finalize EXEC_URL
         id: execurl
         run: |
-          url="${{ steps.execurl1.outputs.url }}"
-          if [ -z "$url" ]; then url="${{ steps.execurl2.outputs.url }}"; fi
+          url="${{ steps.exec1.outputs.url }}"
+          if [ -z "$url" ]; then url="${{ steps.exec2.outputs.url }}"; fi
           echo "EXEC_URL=$url" | tee -a $GITHUB_STEP_SUMMARY
-          if [ -z "$url" ]; then
-            echo "No EXEC_URL found in clasp output" >&2
-            exit 1
-          fi
+          if [ -z "$url" ]; then echo "No EXEC_URL found"; exit 1; fi
           echo "url=$url" >> $GITHUB_OUTPUT
 
-      - name: Selftest (GET ?mode=selftest)
-        id: selftest
+      - name: Selftest
         run: |
           exec_url="${{ steps.execurl.outputs.url }}"
-          sep='?'
-          echo "$exec_url" | grep -q '?' && sep='&' || true
+          sep='?'; echo "$exec_url" | grep -q '?' && sep='&' || true
           test_url="${exec_url}${sep}mode=selftest"
           echo "Selftest URL: $test_url" | tee -a $GITHUB_STEP_SUMMARY
           code=$(curl -sS -o /tmp/selftest.json -w "%{http_code}" "$test_url")
@@ -105,4 +98,4 @@ jobs:
       - name: Print summary to log
         run: |
           echo "EXEC_URL: ${{ steps.execurl.outputs.url }}"
-          echo "Selftest OK ✅"
+          echo "Selftest stage completed"
