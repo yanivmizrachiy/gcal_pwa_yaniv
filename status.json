@@ -1,0 +1,79 @@
+{
+  "project": "יומן חכם של יניב",
+  "lastUpdate": "2025-01-19",
+  "version": "2.0.0",
+  "progress": {
+    "percentage": 60,
+    "completed": [
+      "עדכון הרשאות Calendar לכתיבה מלאה",
+      "מימוש פונקציית doPost מלאה",
+      "תמיכה ב-CRUD מלא (Create, Read, Update, Delete)",
+      "העברת אירועים (Move)",
+      "שכפול אירועים (Duplicate)",
+      "ניהול צבעים (Color)",
+      "ניהול תזכורות (Reminders)",
+      "ניהול משתתפים (Attendees)",
+      "חיפוש אירועים (Search)",
+      "יצירת אירועים חוזרים (Recurring)",
+      "ניתוח שפה טבעית בעברית (NLP)",
+      "תגובות מפורטות בעברית"
+    ],
+    "inProgress": [
+      "בדיקות ואימות",
+      "תיעוד"
+    ],
+    "pending": []
+  },
+  "features": {
+    "calendar": {
+      "fullCRUD": true,
+      "nlpHebrewSupport": true,
+      "realTimeSync": true,
+      "recurringEvents": true,
+      "attendeesManagement": true,
+      "remindersManagement": true,
+      "colorCoding": true,
+      "search": true
+    },
+    "permissions": {
+      "calendarReadWrite": true,
+      "userEmail": true,
+      "externalRequests": true
+    },
+    "deployment": {
+      "pwaReady": true,
+      "workflowsCompatible": true,
+      "productionReady": true
+    }
+  },
+  "api": {
+    "endpoints": {
+      "doGet": {
+        "modes": ["selftest", "events", "info"],
+        "description": "קבלת מידע ואירועים"
+      },
+      "doPost": {
+        "actions": [
+          "create - יצירת אירוע חדש",
+          "update - עדכון אירוע קיים",
+          "delete - מחיקת אירוע",
+          "move - העברת אירוע לזמן אחר",
+          "duplicate - שכפול אירוע",
+          "color - שינוי צבע אירוע",
+          "reminders - ניהול תזכורות",
+          "attendees - ניהול משתתפים",
+          "search - חיפוש אירועים",
+          "recurring - יצירת אירוע חוזר",
+          "nlp - ניתוח שפה טבעית בעברית"
+        ]
+      }
+    }
+  },
+  "notes": [
+    "כל הפעולות מתבצעות על היומן האמיתי של Google",
+    "אין מצב דמו - הכל ייצור (production)",
+    "תמיכה מלאה בעברית",
+    "תואם ל-PWA וזמין offline",
+    "מתבצע סנכרון אמיתי עם Google Calendar"
+  ]
+}
