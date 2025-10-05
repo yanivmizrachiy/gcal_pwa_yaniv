@@ -42,7 +42,19 @@ jobs:
             "rootDir": "src"
           }
           JSON
+
+      # ensure there is source to push
+      - name: Ensure src/Code.gs exists
+        run: |
           mkdir -p src
+          cat > src/Code.gs <<'GS'
+          function doGet(e) {
+            var mode = (e && e.parameter && e.parameter.mode) ? e.parameter.mode : 'default';
+            var body = { ok: true, mode: mode, ts: new Date().toISOString() };
+            return ContentService.createTextOutput(JSON.stringify(body)).setMimeType(ContentService.MimeType.JSON);
+          }
+          GS
+          echo "src/Code.gs written"
 
       - name: Push source to Apps Script
         run: |
