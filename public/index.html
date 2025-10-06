@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>יומן חכם – יניב</title>
+  <link rel="manifest" href="./manifest.json">
+  <meta name="theme-color" content="#0b1220">
+  <meta name="description" content="יישום PWA לניהול יומן Google Calendar עם תמיכה אופליין">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Hebrew:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg-primary: #0b1220;
+      --bg-secondary: #101a30;
+      --bg-card: #1a2a48;
+      --border-color: #2e4c86;
+      --text-primary: #e7ecf5;
+      --text-secondary: #9fb4d9;
+      --accent: #1b3a6b;
+      --accent-hover: #2e4c86;
+    }
+    body {
+      margin: 0;
+      font-family: 'Noto Sans Hebrew', system-ui, -apple-system, Arial, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      line-height: 1.6;
+    }
+    #root {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    /* Toast container for notifications */
+    #toast-container {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      z-index: 1000;
+    }
+    /* Loading indicator */
+    .loading {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      font-size: 1.2rem;
+      color: var(--text-secondary);
+    }
+  </style>
+</head>
+<body>
+  <div id="root">
+    <div class="loading" role="status" aria-live="polite">טוען...</div>
+  </div>
+  <div id="toast-container" role="region" aria-live="polite" aria-label="התראות"></div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

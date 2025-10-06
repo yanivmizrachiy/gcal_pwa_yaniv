@@ -1,9 +1,16 @@
+# Phase B+: Apps Script Backend Deployment
+# This workflow deploys the Apps Script backend (src/Code.gs)
+# Currently functional for existing Code.gs; Phase A.2 will enhance token exchange
+
 name: GAS Deployment
 
 on:
   workflow_dispatch:
   push:
     branches: [ main ]
+    paths:
+      - 'src/Code.gs'
+      - 'src/appsscript.json'
 
 permissions:
   contents: write

@@ -1,0 +1,24 @@
+{
+  "name": "gcal-pwa-yaniv",
+  "version": "0.1.0",
+  "description": "PWA for Google Calendar management with OAuth2 and offline support",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "lint": "eslint src --ext .ts",
+    "format": "prettier --write \"src/**/*.ts\" \"public/**/*.{html,js}\""
+  },
+  "keywords": ["pwa", "calendar", "google-calendar", "oauth2", "rtl"],
+  "author": "Yaniv",
+  "license": "MIT",
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "eslint": "^8.56.0",
+    "prettier": "^3.2.5",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.12"
+  }
+}
