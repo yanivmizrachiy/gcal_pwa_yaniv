@@ -1,0 +1,139 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Hebrew:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Light theme */
+  --bg-color: #f5f7fa;
+  --card-bg: #ffffff;
+  --card-border: #e1e8ed;
+  --text-color: #1a202c;
+  --text-muted: #718096;
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(225, 232, 237, 0.5);
+}
+
+.dark {
+  /* Dark theme */
+  --bg-color: #0b1220;
+  --card-bg: #101a30;
+  --card-border: #1e2a48;
+  --text-color: #e7ecf5;
+  --text-muted: #9fb4d9;
+  --glass-bg: rgba(16, 26, 48, 0.7);
+  --glass-border: rgba(30, 42, 72, 0.5);
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+  direction: rtl;
+}
+
+body {
+  font-family: 'Noto Sans Hebrew', system-ui, -apple-system, sans-serif;
+  background: var(--bg-color);
+  color: var(--text-color);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Logical properties for RTL support */
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  padding-inline: 16px;
+  padding-block: 14px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.15);
+}
+
+/* Glassmorphism effect */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+}
+
+/* Button styles */
+button {
+  font-family: inherit;
+  transition: all 0.2s ease;
+}
+
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--text-muted);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-color);
+}
+
+/* Form elements RTL support */
+input,
+textarea,
+select {
+  direction: rtl;
+  text-align: start;
+}
+
+/* Animation utilities */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-down {
+  animation: slideDown 0.3s ease-out;
+}
