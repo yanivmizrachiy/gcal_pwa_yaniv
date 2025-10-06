@@ -1,0 +1,33 @@
+# Autonomous cycle runtime files (committed only when modified by workflows)
+.autonomy/reports/
+.autonomy/cache/
+.autonomy/meta/
+.autonomy/diagnostics/
+
+# Node modules (if added in future)
+node_modules/
+
+# Build artifacts
+dist/
+build/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary files
+/tmp/
+*.tmp
+
+# Tools
+actionlint
