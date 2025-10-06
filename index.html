@@ -5,22 +5,411 @@
 <style>
 body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Arial;background:#0b1220;color:#e7ecf5}
 .wrap{max-width:900px;margin:0 auto;padding:16px}
-.card{background:#101a30;border:1px solid #1e2a48;border-radius:16px;padding:14px;box-shadow:0 6px 24px rgba(0,0,0,.25)}
-iframe{width:100%;height:80vh;border:1px solid #223556;border-radius:14px;background:#0d1528}
+.card{background:#101a30;border:1px solid #1e2a48;border-radius:16px;padding:14px;box-shadow:0 6px 24px rgba(0,0,0,.25);margin-bottom:10px}
 .top{display:flex;align-items:center;gap:10px;justify-content:space-between}
 button{padding:10px 14px;border-radius:12px;border:1px solid #2e4c86;background:#1b3a6b;color:#fff;font-weight:600;cursor:pointer}
+button:hover{background:#2a4d8f}
+button:disabled{opacity:0.5;cursor:not-allowed}
 small{color:#9fb4d9}
+.btn-group{display:flex;gap:8px;flex-wrap:wrap}
+input,textarea,select{width:100%;padding:10px;border-radius:8px;border:1px solid #2e4c86;background:#0d1528;color:#e7ecf5;font-family:inherit;margin:6px 0}
+textarea{min-height:80px;resize:vertical}
+label{display:block;margin:8px 0 4px;font-weight:600;color:#9fb4d9}
+.event-item{background:#0d1528;border:1px solid #2e4c86;border-radius:8px;padding:12px;margin:8px 0;cursor:pointer}
+.event-item:hover{background:#152540}
+.event-title{font-weight:600;font-size:1.1em;margin-bottom:4px}
+.event-time{color:#9fb4d9;font-size:0.9em}
+.message{padding:12px;border-radius:8px;margin:8px 0}
+.message.success{background:#1a4d2e;border:1px solid #2d7a4f;color:#7cee9d}
+.message.error{background:#4d1a1a;border:1px solid #7a2d2d;color:#ee7c7c}
+.message.info{background:#1a2f4d;border:1px solid:#2d4f7a;color:#7ca6ee}
+.hidden{display:none}
+.spinner{display:inline-block;width:16px;height:16px;border:2px solid #9fb4d9;border-top:2px solid #1b3a6b;border-radius:50%;animation:spin 0.8s linear infinite}
+@keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+#nlpInput{font-size:1.1em}
+.tab-buttons{display:flex;gap:4px;margin-bottom:12px}
+.tab-btn{flex:1;padding:10px;border:1px solid #2e4c86;background:#0d1528;color:#e7ecf5;font-weight:600;cursor:pointer;border-radius:8px}
+.tab-btn.active{background:#1b3a6b}
+.tab-content{display:none}
+.tab-content.active{display:block}
+.color-picker{display:flex;gap:8px;flex-wrap:wrap}
+.color-option{width:40px;height:40px;border-radius:8px;cursor:pointer;border:2px solid transparent}
+.color-option:hover,.color-option.selected{border-color:#fff}
 </style></head><body>
 <div class="wrap">
-  <div class="card"><div class="top">
-    <div>האפליקציה מוכנה. התקן למסך הבית.</div>
-    <button id="installBtn">התקן</button>
-  </div><small>Android: Install / Add to Home Screen · iOS: Add to Home Screen</small></div>
-  <div class="card" style="margin-top:10px"><iframe title="Smart Editor" src="https://script.google.com/macros/s/AKfycbw_AuT9V3G6IjBTAluI9PVyVA4TNjEy9DDFg5_APSHFAnAjwoMKzieowIJDmkH1DkuL/exec"></iframe></div>
+  <div class="card">
+    <div class="top">
+      <div>יומן חכם – עורך מלא עם NLP עברית</div>
+      <button id="installBtn">התקן</button>
+    </div>
+    <small>Android: Install / Add to Home Screen · iOS: Add to Home Screen</small>
+  </div>
+
+  <div class="card">
+    <div class="tab-buttons">
+      <button class="tab-btn active" data-tab="nlp">📝 יצירה בעברית</button>
+      <button class="tab-btn" data-tab="events">📅 אירועים</button>
+      <button class="tab-btn" data-tab="crud">➕ CRUD</button>
+    </div>
+
+    <div id="nlp-tab" class="tab-content active">
+      <label>הקלד באופן טבעי בעברית (דוגמה: "פגישה היום 14:00–15:00 צבע אדום")</label>
+      <input type="text" id="nlpInput" placeholder='לדוגמה: "ארוחת צהריים מחר 13:00–14:30"'>
+      <div class="btn-group">
+        <button id="nlpParseBtn">🔍 פענח</button>
+        <button id="nlpExecuteBtn">✅ צור אירוע</button>
+      </div>
+      <div id="nlpMessage"></div>
+      <div id="nlpResult" class="hidden">
+        <label>תוצאת פענוח:</label>
+        <pre id="nlpParsed" style="background:#0d1528;padding:10px;border-radius:8px;overflow-x:auto"></pre>
+      </div>
+    </div>
+
+    <div id="events-tab" class="tab-content">
+      <div class="btn-group">
+        <button id="loadEventsBtn">🔄 טען אירועים</button>
+        <button id="refreshEventsBtn">♻️ רענן</button>
+      </div>
+      <div id="eventsMessage"></div>
+      <div id="eventsList"></div>
+    </div>
+
+    <div id="crud-tab" class="tab-content">
+      <label>כותרת אירוע</label>
+      <input type="text" id="eventTitle" placeholder="כותרת האירוע">
+      
+      <label>תאריך ושעת התחלה</label>
+      <input type="datetime-local" id="eventStart">
+      
+      <label>תאריך ושעת סיום</label>
+      <input type="datetime-local" id="eventEnd">
+      
+      <label>תיאור (אופציונלי)</label>
+      <textarea id="eventDescription" placeholder="תיאור האירוע"></textarea>
+      
+      <label>צבע (אופציונלי)</label>
+      <select id="eventColor">
+        <option value="">ברירת מחדל</option>
+        <option value="1">כחול בהיר</option>
+        <option value="2">ירוק</option>
+        <option value="3">סגול</option>
+        <option value="4">אדום</option>
+        <option value="5">צהוב</option>
+        <option value="6">כתום</option>
+        <option value="7">ציאן</option>
+        <option value="8">אפור</option>
+        <option value="9">כחול</option>
+        <option value="10">ירוק כהה</option>
+        <option value="11">אדום כהה</option>
+      </select>
+      
+      <div class="btn-group">
+        <button id="createEventBtn">➕ צור אירוע</button>
+        <button id="updateEventBtn" class="hidden">💾 עדכן</button>
+        <button id="cancelEditBtn" class="hidden">❌ ביטול</button>
+      </div>
+      <div id="crudMessage"></div>
+      <input type="hidden" id="editEventId">
+    </div>
+  </div>
+
+  <div class="card">
+    <small>
+      <strong>הוראות שימוש:</strong><br>
+      • <strong>יצירה בעברית:</strong> הקלד משפט בעברית עם פרטי האירוע<br>
+      • תמיכה ב: היום, מחר, ימי שבוע (ראשון הבא, שני הבא...)<br>
+      • שעות בפורמט HH:MM–HH:MM<br>
+      • צבעים: צבע אדום/כחול/ירוק/צהוב/כתום/סגול/ורוד<br>
+      • <strong>אירועים:</strong> צפה וערוך אירועים קיימים<br>
+      • <strong>CRUD:</strong> יצירה, עריכה ומחיקה ידנית של אירועים
+    </small>
+  </div>
 </div>
+
 <script>
+const API_URL = 'https://script.google.com/macros/s/AKfycbw_AuT9V3G6IjBTAluI9PVyVA4TNjEy9DDFg5_APSHFAnAjwoMKzieowIJDmkH1DkuL/exec';
+
 if('serviceWorker' in navigator){navigator.serviceWorker.register('./sw.js').catch(()=>{});}
-let dp=null; window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();dp=e;});
-document.getElementById('installBtn').addEventListener('click',()=>{ if(dp){dp.prompt();dp=null;} else alert('אם אין Install, בחר Add to Home Screen');});
+let dp=null; 
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();dp=e;});
+document.getElementById('installBtn').addEventListener('click',()=>{ 
+  if(dp){dp.prompt();dp=null;} else alert('אם אין Install, בחר Add to Home Screen');
+});
+
+// Tab switching
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(btn.dataset.tab + '-tab').classList.add('active');
+  });
+});
+
+// Helper functions
+function showMessage(elementId, message, type) {
+  const el = document.getElementById(elementId);
+  el.innerHTML = `<div class="message ${type}">${message}</div>`;
+  setTimeout(() => { el.innerHTML = ''; }, 5000);
+}
+
+function formatDateTime(date) {
+  return new Date(date).toLocaleString('he-IL', {
+    year: 'numeric', month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit'
+  });
+}
+
+async function callAPI(data) {
+  const response = await fetch(API_URL, {
+    method: 'POST',
+    body: JSON.stringify(data),
+    headers: {'Content-Type': 'application/json'}
+  });
+  return await response.json();
+}
+
+// NLP functions
+document.getElementById('nlpParseBtn').addEventListener('click', async () => {
+  const text = document.getElementById('nlpInput').value;
+  if (!text) {
+    showMessage('nlpMessage', 'נא להזין טקסט', 'error');
+    return;
+  }
+  
+  showMessage('nlpMessage', '<span class="spinner"></span> מפענח...', 'info');
+  
+  try {
+    const result = await callAPI({ action: 'text', text: text, execute: false });
+    
+    if (result.error) {
+      showMessage('nlpMessage', result.message, 'error');
+      document.getElementById('nlpResult').classList.add('hidden');
+    } else {
+      showMessage('nlpMessage', result.message, 'success');
+      document.getElementById('nlpParsed').textContent = JSON.stringify(result.parsed, null, 2);
+      document.getElementById('nlpResult').classList.remove('hidden');
+    }
+  } catch (err) {
+    showMessage('nlpMessage', 'שגיאת תקשורת: ' + err.message, 'error');
+  }
+});
+
+document.getElementById('nlpExecuteBtn').addEventListener('click', async () => {
+  const text = document.getElementById('nlpInput').value;
+  if (!text) {
+    showMessage('nlpMessage', 'נא להזין טקסט', 'error');
+    return;
+  }
+  
+  showMessage('nlpMessage', '<span class="spinner"></span> יוצר אירוע...', 'info');
+  
+  try {
+    const result = await callAPI({ action: 'text', text: text, execute: true });
+    
+    if (result.error) {
+      showMessage('nlpMessage', result.message, 'error');
+    } else {
+      showMessage('nlpMessage', result.message, 'success');
+      document.getElementById('nlpInput').value = '';
+      document.getElementById('nlpResult').classList.add('hidden');
+    }
+  } catch (err) {
+    showMessage('nlpMessage', 'שגיאת תקשורת: ' + err.message, 'error');
+  }
+});
+
+// Events functions
+let currentEvents = [];
+
+async function loadEvents() {
+  showMessage('eventsMessage', '<span class="spinner"></span> טוען אירועים...', 'info');
+  
+  try {
+    const result = await callAPI({ 
+      action: 'findEvents',
+      startDate: new Date().toISOString(),
+      endDate: new Date(Date.now() + 30*24*60*60*1000).toISOString()
+    });
+    
+    if (result.error) {
+      showMessage('eventsMessage', result.message, 'error');
+    } else {
+      currentEvents = result.events;
+      displayEvents(result.events);
+      showMessage('eventsMessage', result.message, 'success');
+    }
+  } catch (err) {
+    showMessage('eventsMessage', 'שגיאת תקשורת: ' + err.message, 'error');
+  }
+}
+
+function displayEvents(events) {
+  const container = document.getElementById('eventsList');
+  
+  if (events.length === 0) {
+    container.innerHTML = '<div class="message info">אין אירועים להצגה</div>';
+    return;
+  }
+  
+  container.innerHTML = events.map(ev => `
+    <div class="event-item" data-id="${ev.id}">
+      <div class="event-title">${ev.title}</div>
+      <div class="event-time">${formatDateTime(ev.start)} – ${formatDateTime(ev.end)}</div>
+      <div class="btn-group" style="margin-top:8px">
+        <button onclick="editEvent('${ev.id}')">✏️ ערוך</button>
+        <button onclick="deleteEvent('${ev.id}')">🗑️ מחק</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+document.getElementById('loadEventsBtn').addEventListener('click', loadEvents);
+document.getElementById('refreshEventsBtn').addEventListener('click', loadEvents);
+
+// CRUD functions
+document.getElementById('createEventBtn').addEventListener('click', async () => {
+  const title = document.getElementById('eventTitle').value;
+  const start = document.getElementById('eventStart').value;
+  const end = document.getElementById('eventEnd').value;
+  const description = document.getElementById('eventDescription').value;
+  const color = document.getElementById('eventColor').value;
+  
+  if (!title || !start || !end) {
+    showMessage('crudMessage', 'נא למלא כותרת, תאריך התחלה וסיום', 'error');
+    return;
+  }
+  
+  showMessage('crudMessage', '<span class="spinner"></span> יוצר אירוע...', 'info');
+  
+  try {
+    const result = await callAPI({
+      action: 'createEvent',
+      title: title,
+      start: new Date(start).toISOString(),
+      end: new Date(end).toISOString(),
+      description: description,
+      color: color || undefined
+    });
+    
+    if (result.error) {
+      showMessage('crudMessage', result.message, 'error');
+    } else {
+      showMessage('crudMessage', result.message, 'success');
+      clearCRUDForm();
+    }
+  } catch (err) {
+    showMessage('crudMessage', 'שגיאת תקשורת: ' + err.message, 'error');
+  }
+});
+
+window.editEvent = async function(eventId) {
+  showMessage('eventsMessage', '<span class="spinner"></span> טוען אירוע...', 'info');
+  
+  try {
+    const result = await callAPI({ action: 'getEvent', eventId: eventId });
+    
+    if (result.error) {
+      showMessage('eventsMessage', result.message, 'error');
+    } else {
+      const ev = result.event;
+      document.getElementById('eventTitle').value = ev.title;
+      document.getElementById('eventStart').value = new Date(ev.start).toISOString().slice(0, 16);
+      document.getElementById('eventEnd').value = new Date(ev.end).toISOString().slice(0, 16);
+      document.getElementById('eventDescription').value = ev.description || '';
+      document.getElementById('eventColor').value = ev.color || '';
+      document.getElementById('editEventId').value = ev.id;
+      
+      document.getElementById('createEventBtn').classList.add('hidden');
+      document.getElementById('updateEventBtn').classList.remove('hidden');
+      document.getElementById('cancelEditBtn').classList.remove('hidden');
+      
+      document.querySelector('[data-tab="crud"]').click();
+      showMessage('eventsMessage', 'אירוע נטען לעריכה', 'success');
+    }
+  } catch (err) {
+    showMessage('eventsMessage', 'שגיאת תקשורת: ' + err.message, 'error');
+  }
+};
+
+document.getElementById('updateEventBtn').addEventListener('click', async () => {
+  const eventId = document.getElementById('editEventId').value;
+  const title = document.getElementById('eventTitle').value;
+  const start = document.getElementById('eventStart').value;
+  const end = document.getElementById('eventEnd').value;
+  const description = document.getElementById('eventDescription').value;
+  const color = document.getElementById('eventColor').value;
+  
+  if (!title || !start || !end) {
+    showMessage('crudMessage', 'נא למלא כותרת, תאריך התחלה וסיום', 'error');
+    return;
+  }
+  
+  showMessage('crudMessage', '<span class="spinner"></span> מעדכן אירוע...', 'info');
+  
+  try {
+    const result = await callAPI({
+      action: 'updateEvent',
+      eventId: eventId,
+      title: title,
+      start: new Date(start).toISOString(),
+      end: new Date(end).toISOString(),
+      description: description,
+      color: color || undefined
+    });
+    
+    if (result.error) {
+      showMessage('crudMessage', result.message, 'error');
+    } else {
+      showMessage('crudMessage', result.message, 'success');
+      clearCRUDForm();
+      loadEvents();
+    }
+  } catch (err) {
+    showMessage('crudMessage', 'שגיאת תקשורת: ' + err.message, 'error');
+  }
+});
+
+window.deleteEvent = async function(eventId) {
+  if (!confirm('האם אתה בטוח שברצונך למחוק אירוע זה?')) return;
+  
+  showMessage('eventsMessage', '<span class="spinner"></span> מוחק אירוע...', 'info');
+  
+  try {
+    const result = await callAPI({ action: 'deleteEvent', eventId: eventId });
+    
+    if (result.error) {
+      showMessage('eventsMessage', result.message, 'error');
+    } else {
+      showMessage('eventsMessage', result.message, 'success');
+      loadEvents();
+    }
+  } catch (err) {
+    showMessage('eventsMessage', 'שגיאת תקשורת: ' + err.message, 'error');
+  }
+};
+
+document.getElementById('cancelEditBtn').addEventListener('click', clearCRUDForm);
+
+function clearCRUDForm() {
+  document.getElementById('eventTitle').value = '';
+  document.getElementById('eventStart').value = '';
+  document.getElementById('eventEnd').value = '';
+  document.getElementById('eventDescription').value = '';
+  document.getElementById('eventColor').value = '';
+  document.getElementById('editEventId').value = '';
+  
+  document.getElementById('createEventBtn').classList.remove('hidden');
+  document.getElementById('updateEventBtn').classList.add('hidden');
+  document.getElementById('cancelEditBtn').classList.add('hidden');
+}
+
+// Auto-load events when switching to events tab
+document.querySelector('[data-tab="events"]').addEventListener('click', () => {
+  if (currentEvents.length === 0) {
+    loadEvents();
+  }
+});
 </script>
 </body></html>
