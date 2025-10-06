@@ -5,22 +5,295 @@
 <style>
 body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Arial;background:#0b1220;color:#e7ecf5}
 .wrap{max-width:900px;margin:0 auto;padding:16px}
-.card{background:#101a30;border:1px solid #1e2a48;border-radius:16px;padding:14px;box-shadow:0 6px 24px rgba(0,0,0,.25)}
-iframe{width:100%;height:80vh;border:1px solid #223556;border-radius:14px;background:#0d1528}
-.top{display:flex;align-items:center;gap:10px;justify-content:space-between}
-button{padding:10px 14px;border-radius:12px;border:1px solid #2e4c86;background:#1b3a6b;color:#fff;font-weight:600;cursor:pointer}
+.card{background:#101a30;border:1px solid #1e2a48;border-radius:16px;padding:14px;box-shadow:0 6px 24px rgba(0,0,0,.25);margin-bottom:10px}
+.top{display:flex;align-items:center;gap:10px;justify-content:space-between;flex-wrap:wrap}
+button{padding:10px 14px;border-radius:12px;border:1px solid #2e4c86;background:#1b3a6b;color:#fff;font-weight:600;cursor:pointer;transition:all .2s}
+button:hover{background:#2a4f8a;border-color:#4d6fa8}
+button:disabled{opacity:.5;cursor:not-allowed}
+button.delete{background:#7b1b1b;border-color:#a82e2e}
+button.delete:hover{background:#a82e2e}
 small{color:#9fb4d9}
+textarea{width:100%;min-height:80px;padding:12px;border-radius:10px;border:1px solid #2e4c86;background:#0d1528;color:#e7ecf5;font-family:inherit;font-size:15px;resize:vertical;box-sizing:border-box}
+textarea::placeholder{color:#6b7a9f}
+.nlp-section{margin-top:16px}
+.nlp-section h3{margin:0 0 10px 0;font-size:18px;color:#9fb4d9}
+.action-buttons{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.event-list{margin-top:16px}
+.event-item{background:#0d1528;border:1px solid #2e4c86;border-radius:10px;padding:12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:10px}
+.event-info{flex:1;min-width:0}
+.event-title{font-weight:600;font-size:16px;margin-bottom:4px;word-wrap:break-word}
+.event-time{color:#9fb4d9;font-size:14px}
+.event-actions{display:flex;gap:6px;flex-shrink:0}
+.event-actions button{padding:6px 10px;font-size:13px}
+.loading{text-align:center;color:#9fb4d9;padding:20px}
+.error{background:#7b1b1b;border-color:#a82e2e;padding:12px;border-radius:10px;margin-top:10px;color:#ffb3b3}
+.success{background:#1b7b4a;border-color:#2ea86b;padding:12px;border-radius:10px;margin-top:10px;color:#b3ffcc}
+.config{margin-top:16px;padding:10px;background:#0d1528;border-radius:10px}
+.config input{width:100%;padding:8px;border-radius:6px;border:1px solid #2e4c86;background:#101a30;color:#e7ecf5;font-size:14px;box-sizing:border-box;margin-top:5px}
+.help-text{font-size:13px;color:#6b7a9f;margin-top:5px;line-height:1.5}
 </style></head><body>
 <div class="wrap">
-  <div class="card"><div class="top">
-    <div>האפליקציה מוכנה. התקן למסך הבית.</div>
-    <button id="installBtn">התקן</button>
-  </div><small>Android: Install / Add to Home Screen · iOS: Add to Home Screen</small></div>
-  <div class="card" style="margin-top:10px"><iframe title="Smart Editor" src="https://script.google.com/macros/s/AKfycbw_AuT9V3G6IjBTAluI9PVyVA4TNjEy9DDFg5_APSHFAnAjwoMKzieowIJDmkH1DkuL/exec"></iframe></div>
+  <!-- Install card -->
+  <div class="card">
+    <div class="top">
+      <div>האפליקציה מוכנה. התקן למסך הבית.</div>
+      <button id="installBtn">התקן</button>
+    </div>
+    <small>Android: Install / Add to Home Screen · iOS: Add to Home Screen</small>
+  </div>
+
+  <!-- Configuration card -->
+  <div class="card">
+    <h3 style="margin:0 0 10px 0;font-size:18px">⚙️ הגדרות</h3>
+    <div class="config">
+      <label for="apiUrl" style="font-size:14px;color:#9fb4d9">כתובת Apps Script (URL):</label>
+      <input type="text" id="apiUrl" placeholder="https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec" />
+      <div class="help-text">הדבק כאן את ה-URL של ה-deployment של Apps Script שלך</div>
+    </div>
+  </div>
+
+  <!-- NLP Editor card -->
+  <div class="card">
+    <h3 style="margin:0 0 10px 0;font-size:18px">✍️ עורך חכם בעברית</h3>
+    <textarea id="nlpInput" placeholder="כתוב פקודה בעברית, למשל:
+צור פגישה עם דני מחר בשעה 14:00
+הוסף תזכורת לקנות חלב היום
+מחק הפגישה עם דני"></textarea>
+    <div class="action-buttons">
+      <button id="parseBtn">🔍 נתח טקסט (parseOnly)</button>
+      <button id="executeBtn">✅ בצע פעולה</button>
+      <button id="clearBtn">🗑️ נקה</button>
+    </div>
+    <div id="parseResult"></div>
+  </div>
+
+  <!-- Events list card -->
+  <div class="card">
+    <div class="top">
+      <h3 style="margin:0;font-size:18px">📅 האירועים שלי</h3>
+      <button id="refreshBtn">🔄 רענן</button>
+    </div>
+    <div class="action-buttons" style="margin-top:10px">
+      <button id="todayBtn">היום</button>
+      <button id="weekBtn">השבוע</button>
+      <button id="testBtn">בדיקה</button>
+    </div>
+    <div id="eventsList" class="event-list">
+      <div class="loading">טוען אירועים...</div>
+    </div>
+  </div>
 </div>
+
 <script>
+// API Configuration
+let API_URL = localStorage.getItem('gcal_api_url') || '';
+const apiUrlInput = document.getElementById('apiUrl');
+apiUrlInput.value = API_URL;
+apiUrlInput.addEventListener('change', (e) => {
+  API_URL = e.target.value.trim();
+  localStorage.setItem('gcal_api_url', API_URL);
+  showMessage('הגדרות נשמרו!', 'success');
+});
+
+// Service Worker
 if('serviceWorker' in navigator){navigator.serviceWorker.register('./sw.js').catch(()=>{});}
-let dp=null; window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();dp=e;});
-document.getElementById('installBtn').addEventListener('click',()=>{ if(dp){dp.prompt();dp=null;} else alert('אם אין Install, בחר Add to Home Screen');});
+
+// Install prompt
+let dp=null; 
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();dp=e;});
+document.getElementById('installBtn').addEventListener('click',()=>{ 
+  if(dp){dp.prompt();dp=null;} 
+  else alert('אם אין Install, בחר Add to Home Screen');
+});
+
+// API Helper
+async function callAPI(action, options = {}) {
+  if (!API_URL) {
+    showMessage('נא להגדיר כתובת API בהגדרות', 'error');
+    return null;
+  }
+  
+  try {
+    const response = await fetch(API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action, options }),
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const data = await response.json();
+    return data;
+  } catch(err) {
+    showMessage('שגיאה בקריאה ל-API: ' + err.message, 'error');
+    return null;
+  }
+}
+
+// Show message
+function showMessage(text, type = 'success') {
+  const resultDiv = document.getElementById('parseResult');
+  resultDiv.innerHTML = `<div class="${type}">${text}</div>`;
+  setTimeout(() => { resultDiv.innerHTML = ''; }, 5000);
+}
+
+// Load events
+async function loadEvents(timeMin = null, timeMax = null) {
+  const listDiv = document.getElementById('eventsList');
+  listDiv.innerHTML = '<div class="loading">טוען אירועים...</div>';
+  
+  const options = { maxResults: 20 };
+  if (timeMin) options.timeMin = timeMin;
+  if (timeMax) options.timeMax = timeMax;
+  
+  const result = await callAPI('findEvents', options);
+  
+  if (!result || !result.ok) {
+    listDiv.innerHTML = '<div class="error">שגיאה בטעינת אירועים</div>';
+    return;
+  }
+  
+  if (result.events.length === 0) {
+    listDiv.innerHTML = '<div style="text-align:center;color:#9fb4d9;padding:20px">אין אירועים</div>';
+    return;
+  }
+  
+  listDiv.innerHTML = result.events.map(ev => {
+    const start = new Date(ev.start);
+    const startStr = ev.allDay ? start.toLocaleDateString('he-IL') : start.toLocaleString('he-IL');
+    return `
+      <div class="event-item" data-id="${ev.id}">
+        <div class="event-info">
+          <div class="event-title">${escapeHtml(ev.title)}</div>
+          <div class="event-time">${startStr}</div>
+        </div>
+        <div class="event-actions">
+          <button onclick="editEvent('${ev.id}')">✏️ ערוך</button>
+          <button class="delete" onclick="deleteEvent('${ev.id}')">🗑️ מחק</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// Delete event
+async function deleteEvent(eventId) {
+  if (!confirm('האם למחוק את האירוע?')) return;
+  
+  const result = await callAPI('deleteEvent', { id: eventId });
+  
+  if (result && result.ok) {
+    showMessage('האירוע נמחק בהצלחה', 'success');
+    loadEvents();
+  } else {
+    showMessage('שגיאה במחיקת האירוע', 'error');
+  }
+}
+
+// Edit event (simplified - fills NLP input)
+function editEvent(eventId) {
+  const eventEl = document.querySelector(`[data-id="${eventId}"]`);
+  const title = eventEl.querySelector('.event-title').textContent;
+  document.getElementById('nlpInput').value = `עדכן ${title} ל `;
+  document.getElementById('nlpInput').focus();
+}
+
+// Parse text only
+async function parseText() {
+  const text = document.getElementById('nlpInput').value.trim();
+  if (!text) {
+    showMessage('נא להזין טקסט לניתוח', 'error');
+    return;
+  }
+  
+  const result = await callAPI('parseText', { text, parseOnly: true });
+  
+  if (result && result.ok) {
+    const resultDiv = document.getElementById('parseResult');
+    resultDiv.innerHTML = `
+      <div class="success">
+        <strong>ניתוח מוצלח (${result.version}):</strong><br>
+        כוונה: ${result.intent}<br>
+        ${result.event ? 'פרטי אירוע: ' + JSON.stringify(result.event, null, 2) : ''}
+      </div>
+    `;
+  } else {
+    showMessage('שגיאה בניתוח הטקסט', 'error');
+  }
+}
+
+// Execute text command
+async function executeText() {
+  const text = document.getElementById('nlpInput').value.trim();
+  if (!text) {
+    showMessage('נא להזין טקסט לביצוע', 'error');
+    return;
+  }
+  
+  const result = await callAPI('parseText', { text, parseOnly: false });
+  
+  if (result && result.ok) {
+    showMessage('הפעולה בוצעה בהצלחה!', 'success');
+    document.getElementById('nlpInput').value = '';
+    loadEvents();
+  } else {
+    showMessage('שגיאה בביצוע הפעולה: ' + (result?.error || 'לא ידוע'), 'error');
+  }
+}
+
+// Self test
+async function selfTest() {
+  const listDiv = document.getElementById('eventsList');
+  listDiv.innerHTML = '<div class="loading">מריץ בדיקה...</div>';
+  
+  const result = await callAPI('selfTest');
+  
+  if (result && result.ok) {
+    listDiv.innerHTML = `
+      <div class="success">
+        <strong>✅ המערכת פעילה!</strong><br>
+        משתמש: ${result.user || 'לא ידוע'}<br>
+        זמן: ${new Date(result.now).toLocaleString('he-IL')}<br>
+        יכולות: ${result.capabilities?.supportedActions?.join(', ')}<br>
+        NLP: גרסה ${result.capabilities?.nlpVersion}, תמיכה בעברית: ${result.capabilities?.hebrewNLP ? 'כן' : 'לא'}
+      </div>
+    `;
+  } else {
+    listDiv.innerHTML = '<div class="error">בדיקה נכשלה</div>';
+  }
+}
+
+// Helper: escape HTML
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// Event listeners
+document.getElementById('parseBtn').addEventListener('click', parseText);
+document.getElementById('executeBtn').addEventListener('click', executeText);
+document.getElementById('clearBtn').addEventListener('click', () => {
+  document.getElementById('nlpInput').value = '';
+  document.getElementById('parseResult').innerHTML = '';
+});
+
+document.getElementById('refreshBtn').addEventListener('click', () => loadEvents());
+document.getElementById('todayBtn').addEventListener('click', () => {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+  loadEvents(start.toISOString(), end.toISOString());
+});
+document.getElementById('weekBtn').addEventListener('click', () => {
+  const now = new Date();
+  const end = new Date(now.getTime() + 7*24*60*60*1000);
+  loadEvents(now.toISOString(), end.toISOString());
+});
+document.getElementById('testBtn').addEventListener('click', selfTest);
+
+// Initial load
+if (API_URL) {
+  loadEvents();
+} else {
+  document.getElementById('eventsList').innerHTML = '<div style="text-align:center;color:#9fb4d9;padding:20px">נא להגדיר כתובת API בהגדרות למעלה</div>';
+}
 </script>
 </body></html>
