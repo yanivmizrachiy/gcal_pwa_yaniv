@@ -5,22 +5,318 @@
 <style>
 body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Arial;background:#0b1220;color:#e7ecf5}
 .wrap{max-width:900px;margin:0 auto;padding:16px}
-.card{background:#101a30;border:1px solid #1e2a48;border-radius:16px;padding:14px;box-shadow:0 6px 24px rgba(0,0,0,.25)}
-iframe{width:100%;height:80vh;border:1px solid #223556;border-radius:14px;background:#0d1528}
+.card{background:#101a30;border:1px solid #1e2a48;border-radius:16px;padding:14px;box-shadow:0 6px 24px rgba(0,0,0,.25);margin-bottom:10px}
 .top{display:flex;align-items:center;gap:10px;justify-content:space-between}
-button{padding:10px 14px;border-radius:12px;border:1px solid #2e4c86;background:#1b3a6b;color:#fff;font-weight:600;cursor:pointer}
+button{padding:10px 14px;border-radius:12px;border:1px solid #2e4c86;background:#1b3a6b;color:#fff;font-weight:600;cursor:pointer;font-size:14px}
+button:hover{background:#2a4d7c}
+button:disabled{opacity:0.5;cursor:not-allowed}
 small{color:#9fb4d9}
+input,textarea{width:100%;padding:10px;border-radius:8px;border:1px solid #2e4c86;background:#0d1528;color:#e7ecf5;font-family:inherit;font-size:14px;box-sizing:border-box;margin:8px 0}
+input::placeholder,textarea::placeholder{color:#5a7aa0}
+.nl-input{font-size:16px;padding:14px}
+.event-list{margin-top:12px}
+.event-item{background:#0d1528;border:1px solid #223556;border-radius:10px;padding:12px;margin:8px 0;cursor:pointer;transition:border-color 0.2s}
+.event-item:hover{border-color:#3a5a8a}
+.event-title{font-weight:600;font-size:15px;margin-bottom:4px}
+.event-time{color:#9fb4d9;font-size:13px}
+.event-details{color:#7a94b9;font-size:12px;margin-top:6px}
+.toast{position:fixed;top:20px;right:20px;left:20px;max-width:400px;margin:0 auto;background:#1b3a6b;color:#fff;padding:16px;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.4);z-index:1000;display:none;animation:slideIn 0.3s}
+.toast.show{display:block}
+.toast.error{background:#8b2e2e}
+.toast.success{background:#2e6b3a}
+@keyframes slideIn{from{transform:translateY(-20px);opacity:0}to{transform:translateY(0);opacity:1}}
+.loading{text-align:center;padding:20px;color:#9fb4d9}
+.btn-group{display:flex;gap:8px;margin-top:10px}
+.btn-group button{flex:1}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.hidden{display:none}
+h3{margin:0 0 12px 0;font-size:18px;color:#e7ecf5}
+.filter-bar{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+.filter-bar input{flex:1;margin:0;min-width:200px}
+.filter-bar button{margin:0}
 </style></head><body>
 <div class="wrap">
-  <div class="card"><div class="top">
-    <div>האפליקציה מוכנה. התקן למסך הבית.</div>
-    <button id="installBtn">התקן</button>
-  </div><small>Android: Install / Add to Home Screen · iOS: Add to Home Screen</small></div>
-  <div class="card" style="margin-top:10px"><iframe title="Smart Editor" src="https://script.google.com/macros/s/AKfycbw_AuT9V3G6IjBTAluI9PVyVA4TNjEy9DDFg5_APSHFAnAjwoMKzieowIJDmkH1DkuL/exec"></iframe></div>
+  <div class="card">
+    <div class="top">
+      <div>יומן חכם – עורך אירועים</div>
+      <button id="installBtn">התקן</button>
+    </div>
+    <small>Android: Install / Add to Home Screen · iOS: Add to Home Screen</small>
+  </div>
+
+  <div class="card">
+    <h3>פקודה בשפה חופשית</h3>
+    <input type="text" id="nlInput" class="nl-input" placeholder='לדוגמה: "פגישה מחר 14:00-15:00 צבע אדום מקום משרד"'>
+    <button id="nlSubmit">צור אירוע</button>
+    <small style="display:block;margin-top:8px">תומך ב: היום, מחר, ראשון הבא, 25/12, שעות כמו 10:00-11:30, צבע, מקום</small>
+  </div>
+
+  <div class="card" id="eventFormCard" class="hidden">
+    <h3 id="formTitle">יצירת אירוע חדש</h3>
+    <input type="text" id="eventSummary" placeholder="כותרת האירוע">
+    <div class="form-row">
+      <input type="datetime-local" id="eventStart" placeholder="התחלה">
+      <input type="datetime-local" id="eventEnd" placeholder="סיום">
+    </div>
+    <input type="text" id="eventLocation" placeholder="מקום (אופציונלי)">
+    <textarea id="eventDescription" placeholder="תיאור (אופציונלי)" rows="3"></textarea>
+    <input type="text" id="eventColor" placeholder="צבע (אדום, ירוק, כחול...)">
+    <div class="btn-group">
+      <button id="saveEvent">שמור</button>
+      <button id="cancelForm">ביטול</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>האירועים שלי</h3>
+    <div class="filter-bar">
+      <input type="text" id="searchInput" placeholder="חיפוש...">
+      <button id="refreshEvents">רענן</button>
+      <button id="showFormBtn">+ אירוע חדש</button>
+    </div>
+    <div id="eventList" class="event-list">
+      <div class="loading">טוען אירועים...</div>
+    </div>
+  </div>
 </div>
+
+<div id="toast" class="toast"></div>
+
 <script>
+const API_URL = 'https://script.google.com/macros/s/AKfycbw_AuT9V3G6IjBTAluI9PVyVA4TNjEy9DDFg5_APSHFAnAjwoMKzieowIJDmkH1DkuL/exec';
+let currentEvents = [];
+let editingEventId = null;
+
+// Toast notifications
+function showToast(message, type = 'info') {
+  const toast = document.getElementById('toast');
+  toast.textContent = message;
+  toast.className = 'toast show ' + type;
+  setTimeout(() => toast.classList.remove('show'), 4000);
+}
+
+// API calls
+async function callAPI(action, data = {}) {
+  try {
+    const response = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, ...data })
+    });
+    const result = await response.json();
+    if (result.error) {
+      showToast(result.message || 'שגיאה', 'error');
+      return null;
+    }
+    if (result.message) {
+      showToast(result.message, 'success');
+    }
+    return result;
+  } catch (err) {
+    showToast('שגיאת תקשורת: ' + err.message, 'error');
+    return null;
+  }
+}
+
+// Load events
+async function loadEvents(searchQuery = '') {
+  const listEl = document.getElementById('eventList');
+  listEl.innerHTML = '<div class="loading">טוען אירועים...</div>';
+  
+  const now = new Date();
+  const future = new Date(now.getTime() + 30*24*60*60*1000);
+  
+  const result = await callAPI('findEvents', {
+    timeMin: now.toISOString(),
+    timeMax: future.toISOString(),
+    q: searchQuery,
+    maxResults: 50
+  });
+  
+  if (!result) {
+    listEl.innerHTML = '<div class="loading">שגיאה בטעינת אירועים</div>';
+    return;
+  }
+  
+  currentEvents = result.events || [];
+  
+  if (currentEvents.length === 0) {
+    listEl.innerHTML = '<div class="loading">אין אירועים</div>';
+    return;
+  }
+  
+  listEl.innerHTML = currentEvents.map(ev => {
+    const start = new Date(ev.start);
+    const end = new Date(ev.end);
+    const dateStr = start.toLocaleDateString('he-IL', { weekday: 'short', day: 'numeric', month: 'short' });
+    const timeStr = ev.allDay ? 'כל היום' : `${start.toLocaleTimeString('he-IL', {hour: '2-digit', minute: '2-digit'})} - ${end.toLocaleTimeString('he-IL', {hour: '2-digit', minute: '2-digit'})}`;
+    const details = [ev.location, ev.description].filter(x => x).join(' • ');
+    
+    return `
+      <div class="event-item" data-id="${ev.id}">
+        <div class="event-title">${ev.summary}</div>
+        <div class="event-time">${dateStr} • ${timeStr}</div>
+        ${details ? `<div class="event-details">${details}</div>` : ''}
+      </div>
+    `;
+  }).join('');
+  
+  // Add click handlers
+  document.querySelectorAll('.event-item').forEach(item => {
+    item.addEventListener('click', () => handleEventClick(item.dataset.id));
+  });
+}
+
+// Handle event click
+function handleEventClick(eventId) {
+  const event = currentEvents.find(e => e.id === eventId);
+  if (!event) return;
+  
+  const actions = confirm(`אירוע: ${event.summary}\n\nבחר פעולה:\nOK = ערוך, Cancel = מחק`);
+  
+  if (actions) {
+    editEvent(event);
+  } else {
+    if (confirm('בטוח שרוצה למחוק?')) {
+      deleteEvent(eventId);
+    }
+  }
+}
+
+// Edit event
+function editEvent(event) {
+  editingEventId = event.id;
+  document.getElementById('formTitle').textContent = 'עריכת אירוע';
+  document.getElementById('eventSummary').value = event.summary;
+  
+  const start = new Date(event.start);
+  const end = new Date(event.end);
+  document.getElementById('eventStart').value = formatDateTimeLocal(start);
+  document.getElementById('eventEnd').value = formatDateTimeLocal(end);
+  document.getElementById('eventLocation').value = event.location || '';
+  document.getElementById('eventDescription').value = event.description || '';
+  document.getElementById('eventColor').value = '';
+  
+  document.getElementById('eventFormCard').classList.remove('hidden');
+  document.getElementById('eventSummary').focus();
+}
+
+// Delete event
+async function deleteEvent(eventId) {
+  const result = await callAPI('deleteEvent', { id: eventId });
+  if (result) {
+    await loadEvents();
+  }
+}
+
+// Save event (create or update)
+async function saveEvent() {
+  const summary = document.getElementById('eventSummary').value.trim();
+  const start = document.getElementById('eventStart').value;
+  const end = document.getElementById('eventEnd').value;
+  
+  if (!summary || !start || !end) {
+    showToast('נא למלא כותרת ושעות', 'error');
+    return;
+  }
+  
+  const data = {
+    summary,
+    start: new Date(start).toISOString(),
+    end: new Date(end).toISOString(),
+    location: document.getElementById('eventLocation').value,
+    description: document.getElementById('eventDescription').value,
+    color: document.getElementById('eventColor').value
+  };
+  
+  let result;
+  if (editingEventId) {
+    data.id = editingEventId;
+    result = await callAPI('updateEvent', data);
+  } else {
+    result = await callAPI('createEvent', data);
+  }
+  
+  if (result) {
+    closeForm();
+    await loadEvents();
+  }
+}
+
+// Natural language command
+async function handleNLCommand() {
+  const text = document.getElementById('nlInput').value.trim();
+  if (!text) {
+    showToast('נא להזין פקודה', 'error');
+    return;
+  }
+  
+  const result = await callAPI('text', { text });
+  if (result) {
+    document.getElementById('nlInput').value = '';
+    await loadEvents();
+  }
+}
+
+// Form management
+function showForm() {
+  editingEventId = null;
+  document.getElementById('formTitle').textContent = 'יצירת אירוע חדש';
+  document.getElementById('eventSummary').value = '';
+  
+  const now = new Date();
+  now.setMinutes(0);
+  now.setSeconds(0);
+  const later = new Date(now.getTime() + 60*60*1000);
+  
+  document.getElementById('eventStart').value = formatDateTimeLocal(now);
+  document.getElementById('eventEnd').value = formatDateTimeLocal(later);
+  document.getElementById('eventLocation').value = '';
+  document.getElementById('eventDescription').value = '';
+  document.getElementById('eventColor').value = '';
+  
+  document.getElementById('eventFormCard').classList.remove('hidden');
+  document.getElementById('eventSummary').focus();
+}
+
+function closeForm() {
+  editingEventId = null;
+  document.getElementById('eventFormCard').classList.add('hidden');
+}
+
+function formatDateTimeLocal(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+// Event listeners
+document.getElementById('nlSubmit').addEventListener('click', handleNLCommand);
+document.getElementById('nlInput').addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') handleNLCommand();
+});
+
+document.getElementById('saveEvent').addEventListener('click', saveEvent);
+document.getElementById('cancelForm').addEventListener('click', closeForm);
+document.getElementById('showFormBtn').addEventListener('click', showForm);
+
+document.getElementById('refreshEvents').addEventListener('click', () => loadEvents());
+document.getElementById('searchInput').addEventListener('input', (e) => {
+  loadEvents(e.target.value);
+});
+
+// PWA install
 if('serviceWorker' in navigator){navigator.serviceWorker.register('./sw.js').catch(()=>{});}
-let dp=null; window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();dp=e;});
-document.getElementById('installBtn').addEventListener('click',()=>{ if(dp){dp.prompt();dp=null;} else alert('אם אין Install, בחר Add to Home Screen');});
+let dp=null; 
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();dp=e;});
+document.getElementById('installBtn').addEventListener('click',()=>{ 
+  if(dp){dp.prompt();dp=null;} else alert('אם אין Install, בחר Add to Home Screen');
+});
+
+// Initial load
+loadEvents();
 </script>
 </body></html>
