@@ -5,22 +5,343 @@
 <style>
 body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Arial;background:#0b1220;color:#e7ecf5}
 .wrap{max-width:900px;margin:0 auto;padding:16px}
-.card{background:#101a30;border:1px solid #1e2a48;border-radius:16px;padding:14px;box-shadow:0 6px 24px rgba(0,0,0,.25)}
-iframe{width:100%;height:80vh;border:1px solid #223556;border-radius:14px;background:#0d1528}
+.card{background:#101a30;border:1px solid #1e2a48;border-radius:16px;padding:14px;box-shadow:0 6px 24px rgba(0,0,0,.25);margin-bottom:10px}
 .top{display:flex;align-items:center;gap:10px;justify-content:space-between}
 button{padding:10px 14px;border-radius:12px;border:1px solid #2e4c86;background:#1b3a6b;color:#fff;font-weight:600;cursor:pointer}
+button:hover{background:#2a4a7b}
+button:disabled{opacity:0.5;cursor:not-allowed}
 small{color:#9fb4d9}
+input,textarea,select{width:100%;padding:10px;border-radius:8px;border:1px solid #2e4c86;background:#0d1528;color:#e7ecf5;font-family:inherit;box-sizing:border-box;margin-top:6px}
+textarea{min-height:80px;resize:vertical}
+label{display:block;margin-top:12px;font-weight:600;color:#b3c7e8}
+.btn-group{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.btn-sm{padding:6px 10px;font-size:0.9em}
+.event-item{background:#0d1528;border:1px solid #223556;border-radius:8px;padding:10px;margin-top:8px;display:flex;justify-content:space-between;align-items:start}
+.event-info{flex:1}
+.event-title{font-weight:600;color:#e7ecf5}
+.event-time{font-size:0.9em;color:#9fb4d9;margin-top:4px}
+.event-actions{display:flex;gap:4px}
+.status{padding:8px;border-radius:8px;margin-top:8px}
+.status.success{background:#1a3d2d;color:#5dd39e;border:1px solid #2d5a47}
+.status.error{background:#3d1a1a;color:#f87171;border:1px solid #5a2d2d}
+.status.info{background:#1a2a3d;color:#60a5fa;border:1px solid#2d3f5a}
+.nlp-preview{background:#1a2a3d;border:1px solid #2d3f5a;border-radius:8px;padding:10px;margin-top:8px;font-size:0.9em}
+.hidden{display:none}
+h3{margin:0 0 12px 0;color:#b3c7e8;font-size:1.1em}
 </style></head><body>
 <div class="wrap">
-  <div class="card"><div class="top">
-    <div>האפליקציה מוכנה. התקן למסך הבית.</div>
-    <button id="installBtn">התקן</button>
-  </div><small>Android: Install / Add to Home Screen · iOS: Add to Home Screen</small></div>
-  <div class="card" style="margin-top:10px"><iframe title="Smart Editor" src="https://script.google.com/macros/s/AKfycbw_AuT9V3G6IjBTAluI9PVyVA4TNjEy9DDFg5_APSHFAnAjwoMKzieowIJDmkH1DkuL/exec"></iframe></div>
+  <div class="card">
+    <div class="top">
+      <div>יומן חכם – ניהול אירועים בעברית</div>
+      <button id="installBtn">התקן</button>
+    </div>
+    <small>Android: Install / Add to Home Screen · iOS: Add to Home Screen</small>
+  </div>
+
+  <div class="card">
+    <h3>🎯 יצירת אירוע מהירה (NLP)</h3>
+    <label>הקלד בעברית (למשל: "פגישה מחר 10:00 בתל אביב")</label>
+    <textarea id="nlpText" placeholder='דוגמאות: "פגישה היום 14:00", "פגישה מחר 10:00 במשרד"'></textarea>
+    <div class="btn-group">
+      <button id="parseBtn" class="btn-sm">👁️ תצוגה מקדימה</button>
+      <button id="nlpCreateBtn" class="btn-sm">✅ צור אירוע</button>
+    </div>
+    <div id="nlpPreview" class="nlp-preview hidden"></div>
+    <div id="nlpStatus"></div>
+  </div>
+
+  <div class="card">
+    <h3>➕ יצירת אירוע (טופס)</h3>
+    <label>כותרת*</label>
+    <input type="text" id="createTitle" placeholder="כותרת האירוע">
+    <label>תאריך ושעת התחלה*</label>
+    <input type="datetime-local" id="createStart">
+    <label>תאריך ושעת סיום</label>
+    <input type="datetime-local" id="createEnd">
+    <label>מיקום</label>
+    <input type="text" id="createLocation" placeholder="מיקום האירוע">
+    <label>תיאור</label>
+    <textarea id="createDesc" placeholder="תיאור האירוע"></textarea>
+    <div class="btn-group">
+      <button id="createBtn">צור אירוע</button>
+    </div>
+    <div id="createStatus"></div>
+  </div>
+
+  <div class="card">
+    <h3>📋 האירועים שלי</h3>
+    <div class="btn-group">
+      <button id="loadEventsBtn" class="btn-sm">רענן רשימה</button>
+      <button id="loadTodayBtn" class="btn-sm">היום בלבד</button>
+    </div>
+    <div id="eventsList"></div>
+    <div id="eventsStatus"></div>
+  </div>
+
+  <div class="card hidden" id="editCard">
+    <h3>✏️ עריכת אירוע</h3>
+    <input type="hidden" id="editEventId">
+    <label>כותרת</label>
+    <input type="text" id="editTitle">
+    <label>תאריך ושעת התחלה</label>
+    <input type="datetime-local" id="editStart">
+    <label>תאריך ושעת סיום</label>
+    <input type="datetime-local" id="editEnd">
+    <label>מיקום</label>
+    <input type="text" id="editLocation">
+    <label>תיאור</label>
+    <textarea id="editDesc"></textarea>
+    <div class="btn-group">
+      <button id="updateBtn">עדכן</button>
+      <button id="cancelEditBtn" class="btn-sm">ביטול</button>
+    </div>
+    <div id="editStatus"></div>
+  </div>
 </div>
+
 <script>
+// EXEC_URL will be dynamically injected by deployment or set manually
+const EXEC_URL = 'https://script.google.com/macros/s/AKfycbw_AuT9V3G6IjBTAluI9PVyVA4TNjEy9DDFg5_APSHFAnAjwoMKzieowIJDmkH1DkuL/exec';
+
+// Service Worker
 if('serviceWorker' in navigator){navigator.serviceWorker.register('./sw.js').catch(()=>{});}
-let dp=null; window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();dp=e;});
-document.getElementById('installBtn').addEventListener('click',()=>{ if(dp){dp.prompt();dp=null;} else alert('אם אין Install, בחר Add to Home Screen');});
+let dp=null; 
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();dp=e;});
+document.getElementById('installBtn').addEventListener('click',()=>{ 
+  if(dp){dp.prompt();dp=null;} 
+  else alert('אם אין Install, בחר Add to Home Screen');
+});
+
+// Utility functions
+function showStatus(elementId, message, type = 'info') {
+  const el = document.getElementById(elementId);
+  el.innerHTML = `<div class="status ${type}">${message}</div>`;
+}
+
+function clearStatus(elementId) {
+  document.getElementById(elementId).innerHTML = '';
+}
+
+async function postAPI(action, data = {}) {
+  try {
+    const response = await fetch(EXEC_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, ...data })
+    });
+    const result = await response.json();
+    return result;
+  } catch (err) {
+    return { ok: false, error: 'שגיאת רשת: ' + err.message };
+  }
+}
+
+// NLP Parse Preview
+document.getElementById('parseBtn').addEventListener('click', async () => {
+  const text = document.getElementById('nlpText').value.trim();
+  if (!text) {
+    showStatus('nlpStatus', 'נא להזין טקסט', 'error');
+    return;
+  }
+  
+  clearStatus('nlpStatus');
+  document.getElementById('nlpPreview').classList.remove('hidden');
+  document.getElementById('nlpPreview').innerHTML = '⏳ מנתח...';
+  
+  const result = await postAPI('parseOnly', { text });
+  
+  if (result.ok && result.parsed) {
+    const p = result.parsed;
+    document.getElementById('nlpPreview').innerHTML = `
+      <strong>תצוגה מקדימה:</strong><br>
+      📌 כותרת: ${p.title}<br>
+      📅 התחלה: ${new Date(p.start).toLocaleString('he-IL')}<br>
+      ⏰ סיום: ${new Date(p.end).toLocaleString('he-IL')}<br>
+      ${p.location ? '📍 מיקום: ' + p.location : ''}
+    `;
+  } else {
+    document.getElementById('nlpPreview').innerHTML = 'שגיאה בניתוח: ' + (result.error || 'לא ידוע');
+  }
+});
+
+// NLP Create Event
+document.getElementById('nlpCreateBtn').addEventListener('click', async () => {
+  const text = document.getElementById('nlpText').value.trim();
+  if (!text) {
+    showStatus('nlpStatus', 'נא להזין טקסט', 'error');
+    return;
+  }
+  
+  clearStatus('nlpStatus');
+  showStatus('nlpStatus', '⏳ יוצר אירוע...', 'info');
+  
+  const result = await postAPI('text', { text });
+  
+  if (result.ok) {
+    showStatus('nlpStatus', `✅ אירוע נוצר: ${result.title}`, 'success');
+    document.getElementById('nlpText').value = '';
+    document.getElementById('nlpPreview').classList.add('hidden');
+    setTimeout(() => loadEvents(), 1000);
+  } else {
+    showStatus('nlpStatus', '❌ ' + (result.error || 'שגיאה ביצירת אירוע'), 'error');
+  }
+});
+
+// Create Event (Form)
+document.getElementById('createBtn').addEventListener('click', async () => {
+  const title = document.getElementById('createTitle').value.trim();
+  const start = document.getElementById('createStart').value;
+  
+  if (!title || !start) {
+    showStatus('createStatus', 'נא למלא כותרת ותאריך התחלה', 'error');
+    return;
+  }
+  
+  const data = {
+    title,
+    start: new Date(start).toISOString(),
+    end: document.getElementById('createEnd').value ? new Date(document.getElementById('createEnd').value).toISOString() : null,
+    location: document.getElementById('createLocation').value,
+    description: document.getElementById('createDesc').value
+  };
+  
+  clearStatus('createStatus');
+  showStatus('createStatus', '⏳ יוצר אירוע...', 'info');
+  
+  const result = await postAPI('createEvent', data);
+  
+  if (result.ok) {
+    showStatus('createStatus', `✅ אירוע נוצר: ${result.title}`, 'success');
+    document.getElementById('createTitle').value = '';
+    document.getElementById('createStart').value = '';
+    document.getElementById('createEnd').value = '';
+    document.getElementById('createLocation').value = '';
+    document.getElementById('createDesc').value = '';
+    setTimeout(() => loadEvents(), 1000);
+  } else {
+    showStatus('createStatus', '❌ ' + (result.error || 'שגיאה ביצירת אירוע'), 'error');
+  }
+});
+
+// Load Events
+async function loadEvents(today = false) {
+  clearStatus('eventsStatus');
+  showStatus('eventsStatus', '⏳ טוען אירועים...', 'info');
+  document.getElementById('eventsList').innerHTML = '';
+  
+  const now = new Date();
+  let start, end;
+  
+  if (today) {
+    start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+  } else {
+    start = now;
+    end = new Date(now.getTime() + 7*24*60*60*1000);
+  }
+  
+  const result = await postAPI('findEvents', {
+    start: start.toISOString(),
+    end: end.toISOString(),
+    maxResults: 50
+  });
+  
+  if (result.ok) {
+    clearStatus('eventsStatus');
+    if (result.events.length === 0) {
+      document.getElementById('eventsList').innerHTML = '<div style="text-align:center;padding:20px;color:#9fb4d9">אין אירועים</div>';
+    } else {
+      result.events.forEach(ev => {
+        const div = document.createElement('div');
+        div.className = 'event-item';
+        div.innerHTML = `
+          <div class="event-info">
+            <div class="event-title">${ev.title}</div>
+            <div class="event-time">${new Date(ev.start).toLocaleString('he-IL')} - ${new Date(ev.end).toLocaleString('he-IL')}</div>
+            ${ev.location ? '<div class="event-time">📍 ' + ev.location + '</div>' : ''}
+          </div>
+          <div class="event-actions">
+            <button class="btn-sm" onclick="editEvent('${ev.id}')">✏️</button>
+            <button class="btn-sm" onclick="deleteEvent('${ev.id}', '${ev.title.replace(/'/g, "\\'")}')">🗑️</button>
+          </div>
+        `;
+        document.getElementById('eventsList').appendChild(div);
+      });
+    }
+  } else {
+    showStatus('eventsStatus', '❌ ' + (result.error || 'שגיאה בטעינת אירועים'), 'error');
+  }
+}
+
+document.getElementById('loadEventsBtn').addEventListener('click', () => loadEvents(false));
+document.getElementById('loadTodayBtn').addEventListener('click', () => loadEvents(true));
+
+// Edit Event
+window.editEvent = async function(eventId) {
+  const result = await postAPI('getEvent', { eventId });
+  
+  if (result.ok && result.event) {
+    const ev = result.event;
+    document.getElementById('editEventId').value = ev.id;
+    document.getElementById('editTitle').value = ev.title;
+    document.getElementById('editStart').value = new Date(ev.start).toISOString().slice(0, 16);
+    document.getElementById('editEnd').value = new Date(ev.end).toISOString().slice(0, 16);
+    document.getElementById('editLocation').value = ev.location || '';
+    document.getElementById('editDesc').value = ev.description || '';
+    document.getElementById('editCard').classList.remove('hidden');
+    document.getElementById('editCard').scrollIntoView({ behavior: 'smooth' });
+  } else {
+    alert('שגיאה בטעינת האירוע');
+  }
+};
+
+// Update Event
+document.getElementById('updateBtn').addEventListener('click', async () => {
+  const eventId = document.getElementById('editEventId').value;
+  const data = {
+    eventId,
+    title: document.getElementById('editTitle').value,
+    start: new Date(document.getElementById('editStart').value).toISOString(),
+    end: new Date(document.getElementById('editEnd').value).toISOString(),
+    location: document.getElementById('editLocation').value,
+    description: document.getElementById('editDesc').value
+  };
+  
+  clearStatus('editStatus');
+  showStatus('editStatus', '⏳ מעדכן...', 'info');
+  
+  const result = await postAPI('updateEvent', data);
+  
+  if (result.ok) {
+    showStatus('editStatus', '✅ אירוע עודכן בהצלחה', 'success');
+    setTimeout(() => {
+      document.getElementById('editCard').classList.add('hidden');
+      loadEvents();
+    }, 1500);
+  } else {
+    showStatus('editStatus', '❌ ' + (result.error || 'שגיאה בעדכון'), 'error');
+  }
+});
+
+document.getElementById('cancelEditBtn').addEventListener('click', () => {
+  document.getElementById('editCard').classList.add('hidden');
+});
+
+// Delete Event
+window.deleteEvent = async function(eventId, title) {
+  if (!confirm(`למחוק את "${title}"?`)) return;
+  
+  const result = await postAPI('deleteEvent', { eventId });
+  
+  if (result.ok) {
+    alert('✅ אירוע נמחק');
+    loadEvents();
+  } else {
+    alert('❌ ' + (result.error || 'שגיאה במחיקה'));
+  }
+};
+
+// Load events on page load
+loadEvents();
 </script>
 </body></html>

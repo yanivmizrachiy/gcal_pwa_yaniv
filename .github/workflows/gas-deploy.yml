@@ -99,3 +99,181 @@ jobs:
         run: |
           echo "EXEC_URL: ${{ steps.execurl.outputs.url }}"
           echo "Selftest stage completed"
+      
+      # ========== AUTOMATED SMOKE TESTS ==========
+      
+      - name: Smoke Test - POST selfTest
+        run: |
+          exec_url="${{ steps.execurl.outputs.url }}"
+          echo "Testing POST selfTest..." | tee -a $GITHUB_STEP_SUMMARY
+          code=$(curl -sS -X POST -H "Content-Type: application/json" \
+            -d '{"action":"selfTest"}' \
+            -o /tmp/smoke_selftest.json -w "%{http_code}" "$exec_url")
+          echo "HTTP $code" | tee -a $GITHUB_STEP_SUMMARY
+          cat /tmp/smoke_selftest.json | tee -a $GITHUB_STEP_SUMMARY
+          [ "$code" = "200" ] || (echo "❌ selfTest failed (HTTP $code)"; exit 1)
+          grep -q '"ok":true' /tmp/smoke_selftest.json || (echo "❌ selfTest returned ok:false"; exit 1)
+          echo "✅ POST selfTest passed" | tee -a $GITHUB_STEP_SUMMARY
+      
+      - name: Smoke Test - POST createEvent
+        id: create_event
+        run: |
+          exec_url="${{ steps.execurl.outputs.url }}"
+          timestamp=$(date -u +%Y%m%d_%H%M%S)
+          start=$(date -u -d "+1 hour" +%Y-%m-%dT%H:%M:%S.000Z)
+          end=$(date -u -d "+2 hours" +%Y-%m-%dT%H:%M:%S.000Z)
+          
+          echo "Testing POST createEvent..." | tee -a $GITHUB_STEP_SUMMARY
+          code=$(curl -sS -X POST -H "Content-Type: application/json" \
+            -d "{\"action\":\"createEvent\",\"title\":\"🧪 Smoke Test $timestamp\",\"start\":\"$start\",\"end\":\"$end\",\"description\":\"Automated test - safe to delete\",\"location\":\"CI\"}" \
+            -o /tmp/smoke_create.json -w "%{http_code}" "$exec_url")
+          echo "HTTP $code" | tee -a $GITHUB_STEP_SUMMARY
+          cat /tmp/smoke_create.json | tee -a $GITHUB_STEP_SUMMARY
+          [ "$code" = "200" ] || (echo "❌ createEvent failed (HTTP $code)"; exit 1)
+          grep -q '"ok":true' /tmp/smoke_create.json || (echo "❌ createEvent returned ok:false"; exit 1)
+          
+          event_id=$(cat /tmp/smoke_create.json | grep -o '"eventId":"[^"]*"' | cut -d'"' -f4)
+          echo "event_id=$event_id" >> $GITHUB_OUTPUT
+          echo "✅ POST createEvent passed (ID: $event_id)" | tee -a $GITHUB_STEP_SUMMARY
+      
+      - name: Smoke Test - POST findEvents
+        run: |
+          exec_url="${{ steps.execurl.outputs.url }}"
+          start=$(date -u +%Y-%m-%dT%H:%M:%S.000Z)
+          end=$(date -u -d "+7 days" +%Y-%m-%dT%H:%M:%S.000Z)
+          
+          echo "Testing POST findEvents..." | tee -a $GITHUB_STEP_SUMMARY
+          code=$(curl -sS -X POST -H "Content-Type: application/json" \
+            -d "{\"action\":\"findEvents\",\"start\":\"$start\",\"end\":\"$end\",\"maxResults\":10}" \
+            -o /tmp/smoke_find.json -w "%{http_code}" "$exec_url")
+          echo "HTTP $code" | tee -a $GITHUB_STEP_SUMMARY
+          cat /tmp/smoke_find.json | head -500c | tee -a $GITHUB_STEP_SUMMARY
+          [ "$code" = "200" ] || (echo "❌ findEvents failed (HTTP $code)"; exit 1)
+          grep -q '"ok":true' /tmp/smoke_find.json || (echo "❌ findEvents returned ok:false"; exit 1)
+          echo "✅ POST findEvents passed" | tee -a $GITHUB_STEP_SUMMARY
+      
+      - name: Smoke Test - POST getEvent
+        run: |
+          exec_url="${{ steps.execurl.outputs.url }}"
+          event_id="${{ steps.create_event.outputs.event_id }}"
+          
+          if [ -z "$event_id" ]; then
+            echo "⚠️ No event_id from create step, skipping getEvent test"
+            exit 0
+          fi
+          
+          echo "Testing POST getEvent..." | tee -a $GITHUB_STEP_SUMMARY
+          code=$(curl -sS -X POST -H "Content-Type: application/json" \
+            -d "{\"action\":\"getEvent\",\"eventId\":\"$event_id\"}" \
+            -o /tmp/smoke_get.json -w "%{http_code}" "$exec_url")
+          echo "HTTP $code" | tee -a $GITHUB_STEP_SUMMARY
+          cat /tmp/smoke_get.json | tee -a $GITHUB_STEP_SUMMARY
+          [ "$code" = "200" ] || (echo "❌ getEvent failed (HTTP $code)"; exit 1)
+          grep -q '"ok":true' /tmp/smoke_get.json || (echo "❌ getEvent returned ok:false"; exit 1)
+          echo "✅ POST getEvent passed" | tee -a $GITHUB_STEP_SUMMARY
+      
+      - name: Smoke Test - POST updateEvent
+        run: |
+          exec_url="${{ steps.execurl.outputs.url }}"
+          event_id="${{ steps.create_event.outputs.event_id }}"
+          
+          if [ -z "$event_id" ]; then
+            echo "⚠️ No event_id from create step, skipping updateEvent test"
+            exit 0
+          fi
+          
+          timestamp=$(date -u +%Y%m%d_%H%M%S)
+          start=$(date -u -d "+1.5 hours" +%Y-%m-%dT%H:%M:%S.000Z)
+          end=$(date -u -d "+2.5 hours" +%Y-%m-%dT%H:%M:%S.000Z)
+          
+          echo "Testing POST updateEvent..." | tee -a $GITHUB_STEP_SUMMARY
+          code=$(curl -sS -X POST -H "Content-Type: application/json" \
+            -d "{\"action\":\"updateEvent\",\"eventId\":\"$event_id\",\"title\":\"🧪 UPDATED Test $timestamp\",\"start\":\"$start\",\"end\":\"$end\",\"location\":\"CI-Updated\"}" \
+            -o /tmp/smoke_update.json -w "%{http_code}" "$exec_url")
+          echo "HTTP $code" | tee -a $GITHUB_STEP_SUMMARY
+          cat /tmp/smoke_update.json | tee -a $GITHUB_STEP_SUMMARY
+          [ "$code" = "200" ] || (echo "❌ updateEvent failed (HTTP $code)"; exit 1)
+          grep -q '"ok":true' /tmp/smoke_update.json || (echo "❌ updateEvent returned ok:false"; exit 1)
+          echo "✅ POST updateEvent passed" | tee -a $GITHUB_STEP_SUMMARY
+      
+      - name: Smoke Test - POST text (NLP v1)
+        id: nlp_create
+        run: |
+          exec_url="${{ steps.execurl.outputs.url }}"
+          
+          echo "Testing POST text (NLP)..." | tee -a $GITHUB_STEP_SUMMARY
+          code=$(curl -sS -X POST -H "Content-Type: application/json" \
+            -d '{"action":"text","text":"בדיקת NLP היום 23:55"}' \
+            -o /tmp/smoke_nlp.json -w "%{http_code}" "$exec_url")
+          echo "HTTP $code" | tee -a $GITHUB_STEP_SUMMARY
+          cat /tmp/smoke_nlp.json | tee -a $GITHUB_STEP_SUMMARY
+          [ "$code" = "200" ] || (echo "❌ text (NLP) failed (HTTP $code)"; exit 1)
+          grep -q '"ok":true' /tmp/smoke_nlp.json || (echo "❌ text (NLP) returned ok:false"; exit 1)
+          
+          nlp_event_id=$(cat /tmp/smoke_nlp.json | grep -o '"eventId":"[^"]*"' | cut -d'"' -f4)
+          echo "nlp_event_id=$nlp_event_id" >> $GITHUB_OUTPUT
+          echo "✅ POST text (NLP) passed (ID: $nlp_event_id)" | tee -a $GITHUB_STEP_SUMMARY
+      
+      - name: Smoke Test - POST parseOnly (NLP v2-draft)
+        run: |
+          exec_url="${{ steps.execurl.outputs.url }}"
+          
+          echo "Testing POST parseOnly..." | tee -a $GITHUB_STEP_SUMMARY
+          code=$(curl -sS -X POST -H "Content-Type: application/json" \
+            -d '{"action":"parseOnly","text":"פגישה מחר 10:00 במשרד"}' \
+            -o /tmp/smoke_parse.json -w "%{http_code}" "$exec_url")
+          echo "HTTP $code" | tee -a $GITHUB_STEP_SUMMARY
+          cat /tmp/smoke_parse.json | tee -a $GITHUB_STEP_SUMMARY
+          [ "$code" = "200" ] || (echo "❌ parseOnly failed (HTTP $code)"; exit 1)
+          grep -q '"ok":true' /tmp/smoke_parse.json || (echo "❌ parseOnly returned ok:false"; exit 1)
+          grep -q '"executed":false' /tmp/smoke_parse.json || (echo "❌ parseOnly should not execute"; exit 1)
+          echo "✅ POST parseOnly passed" | tee -a $GITHUB_STEP_SUMMARY
+      
+      - name: Smoke Test - POST deleteEvent (cleanup)
+        run: |
+          exec_url="${{ steps.execurl.outputs.url }}"
+          event_id="${{ steps.create_event.outputs.event_id }}"
+          nlp_event_id="${{ steps.nlp_create.outputs.nlp_event_id }}"
+          
+          # Delete main test event
+          if [ -n "$event_id" ]; then
+            echo "Deleting test event $event_id..." | tee -a $GITHUB_STEP_SUMMARY
+            code=$(curl -sS -X POST -H "Content-Type: application/json" \
+              -d "{\"action\":\"deleteEvent\",\"eventId\":\"$event_id\"}" \
+              -o /tmp/smoke_delete1.json -w "%{http_code}" "$exec_url")
+            echo "HTTP $code" | tee -a $GITHUB_STEP_SUMMARY
+            cat /tmp/smoke_delete1.json | tee -a $GITHUB_STEP_SUMMARY
+            [ "$code" = "200" ] || (echo "❌ deleteEvent failed (HTTP $code)"; exit 1)
+            grep -q '"ok":true' /tmp/smoke_delete1.json || (echo "❌ deleteEvent returned ok:false"; exit 1)
+            echo "✅ Deleted test event" | tee -a $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Delete NLP test event
+          if [ -n "$nlp_event_id" ]; then
+            echo "Deleting NLP test event $nlp_event_id..." | tee -a $GITHUB_STEP_SUMMARY
+            code=$(curl -sS -X POST -H "Content-Type: application/json" \
+              -d "{\"action\":\"deleteEvent\",\"eventId\":\"$nlp_event_id\"}" \
+              -o /tmp/smoke_delete2.json -w "%{http_code}" "$exec_url")
+            echo "HTTP $code" | tee -a $GITHUB_STEP_SUMMARY
+            cat /tmp/smoke_delete2.json | tee -a $GITHUB_STEP_SUMMARY
+            [ "$code" = "200" ] || (echo "❌ deleteEvent (NLP) failed (HTTP $code)"; exit 1)
+            grep -q '"ok":true' /tmp/smoke_delete2.json || (echo "❌ deleteEvent (NLP) returned ok:false"; exit 1)
+            echo "✅ Deleted NLP test event" | tee -a $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "✅ POST deleteEvent passed (cleanup complete)" | tee -a $GITHUB_STEP_SUMMARY
+      
+      - name: Smoke Tests Summary
+        run: |
+          echo "## 🎉 All Smoke Tests Passed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ POST selfTest" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ POST createEvent" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ POST findEvents" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ POST getEvent" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ POST updateEvent" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ POST text (NLP v1)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ POST parseOnly (NLP v2-draft)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ POST deleteEvent (cleanup)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Ready for production use!**" >> $GITHUB_STEP_SUMMARY
