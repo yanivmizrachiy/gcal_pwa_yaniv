@@ -100,7 +100,100 @@ function handleSelfTest() {
     action: 'selfTest',
     message: 'בדיקה תקינה',
     nlpVersion: 'v1',
-    now: new Date().toISOString()
+    now: new Date().toISOString(),
+    samples: {
+      updateDelete: {
+        sampleUpdate: {
+          input: 'עדכן פגישה עם לקוח לשעה 14:00-15:00 צבע כחול',
+          parsed: {
+            success: true,
+            operation: 'update',
+            mock: true,
+            changes: {
+              start: '2025-01-15T14:00:00.000Z',
+              end: '2025-01-15T15:00:00.000Z',
+              color: 'blue'
+            },
+            eventId: null,
+            tokens: [
+              { text: 'עדכן', index: 0, type: 'text' },
+              { text: 'פגישה', index: 1, type: 'text' },
+              { text: 'עם', index: 2, type: 'text' },
+              { text: 'לקוח', index: 3, type: 'text' },
+              { text: 'לשעה', index: 4, type: 'text' },
+              { text: '14:00-15:00', index: 5, type: 'time' },
+              { text: 'צבע', index: 6, type: 'text' },
+              { text: 'כחול', index: 7, type: 'color' }
+            ]
+          },
+          description: 'דוגמה לעדכון זמן וצבע של אירוע'
+        },
+        sampleGuests: {
+          input: 'עדכן פגישת צוות הוסף אורחים john@example.com, jane@example.com הסר אורח old@example.com',
+          parsed: {
+            success: true,
+            operation: 'update',
+            mock: true,
+            changes: {
+              guestsAdd: ['john@example.com', 'jane@example.com'],
+              guestsRemove: ['old@example.com']
+            },
+            eventId: null,
+            tokens: [
+              { text: 'עדכן', index: 0, type: 'text' },
+              { text: 'פגישת', index: 1, type: 'text' },
+              { text: 'צוות', index: 2, type: 'text' },
+              { text: 'הוסף', index: 3, type: 'text' },
+              { text: 'אורחים', index: 4, type: 'text' },
+              { text: 'john@example.com,', index: 5, type: 'text' },
+              { text: 'jane@example.com', index: 6, type: 'text' },
+              { text: 'הסר', index: 7, type: 'text' },
+              { text: 'אורח', index: 8, type: 'text' },
+              { text: 'old@example.com', index: 9, type: 'text' }
+            ]
+          },
+          description: 'דוגמה להוספה והסרה של אורחים'
+        },
+        sampleDeleteAmbiguous: {
+          input: 'מחק פגישה',
+          parsed: {
+            success: false,
+            operation: 'delete',
+            mock: true,
+            needDisambiguation: true,
+            candidates: [
+              {
+                id: 'mock_event_1',
+                title: 'פגישה עם לקוח',
+                start: '2025-01-15T10:00:00.000Z',
+                end: '2025-01-15T11:00:00.000Z',
+                mock: true
+              },
+              {
+                id: 'mock_event_2',
+                title: 'פגישת צוות',
+                start: '2025-01-16T14:00:00.000Z',
+                end: '2025-01-16T15:00:00.000Z',
+                mock: true
+              },
+              {
+                id: 'mock_event_3',
+                title: 'פגישה חודשית',
+                start: '2025-01-17T09:00:00.000Z',
+                end: '2025-01-17T10:00:00.000Z',
+                mock: true
+              }
+            ],
+            eventId: null,
+            tokens: [
+              { text: 'מחק', index: 0, type: 'text' },
+              { text: 'פגישה', index: 1, type: 'text' }
+            ]
+          },
+          description: 'דוגמה למחיקה מעורפלת הדורשת בחירה'
+        }
+      }
+    }
   };
 }
 
