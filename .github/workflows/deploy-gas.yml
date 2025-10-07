@@ -1,0 +1,52 @@
+name: Deploy Google Apps Script
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to Apps Script (Production)
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install clasp
+        run: npm i -g @google/clasp@2
+
+      - name: Write .clasprc.json from secret
+        run: |
+          printf '%s' "${{ secrets.CLASPRC_JSON }}" > ~/.clasprc.json
+          chmod 600 ~/.clasprc.json
+
+      - name: Ensure .clasp.json exists with scriptId
+        run: |
+          if [ ! -f .clasp.json ]; then
+            echo "{\"scriptId\":\"${{ secrets.SCRIPT_ID }}\",\"rootDir\":\"src\"}" > .clasp.json
+          fi
+          cat .clasp.json
+
+      - name: Push code (clasp push)
+        run: clasp push --force
+
+      - name: Deploy web app (reuse deployment)
+        run: |
+          clasp deploy \
+            --deploymentId "${{ secrets.DEPLOYMENT_ID }}" \
+            --description "CI deploy $GITHUB_SHA"
+
+      - name: Print deployment info
+        run: |
+          echo '✅ Deployment complete'
+          echo "Web App URL: ${{ secrets.WEB_APP_URL }}"
