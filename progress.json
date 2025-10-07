@@ -1,0 +1,23 @@
+{
+  "lastUpdate": "",
+  "currentStep": "idle",
+  "percent": 0,
+  "steps": {
+    "gas_deploy": {
+      "status": "pending",
+      "percent": 30,
+      "lastRun": ""
+    },
+    "exec_url_update": {
+      "status": "pending",
+      "percent": 60,
+      "lastRun": ""
+    },
+    "pwa_deploy": {
+      "status": "pending",
+      "percent": 100,
+      "lastRun": ""
+    }
+  },
+  "history": []
+}

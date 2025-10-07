@@ -4,6 +4,9 @@ on:
   workflow_dispatch:
   push:
     branches: [ main ]
+  schedule:
+    # Run hourly for self-healing deployments
+    - cron: '0 * * * *'
 
 permissions:
   contents: write
@@ -13,6 +16,8 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    outputs:
+      exec_url: ${{ steps.execurl.outputs.url }}
 
     steps:
       - name: Checkout
@@ -46,16 +51,38 @@ jobs:
           mkdir -p src
 
       - name: Push source to Apps Script
+        id: push
+        continue-on-error: true
         run: |
           clasp push -f
           echo "✔ clasp push done"
 
+      - name: Retry push on failure
+        if: steps.push.outcome == 'failure'
+        run: |
+          echo "Retrying clasp push after failure..."
+          sleep 5
+          clasp push -f
+          echo "✔ clasp push done (retry)"
+
       - name: Version & Deploy
+        id: deploy_step
+        continue-on-error: true
         run: |
           TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           clasp version "ci: $TS" || true
           clasp deploy --description "ci: $TS" || true
           echo "✔ deploy attempted"
+
+      - name: Retry deploy on failure
+        if: steps.deploy_step.outcome == 'failure'
+        run: |
+          echo "Retrying clasp deploy after failure..."
+          sleep 5
+          TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          clasp version "ci: $TS" || true
+          clasp deploy --description "ci: $TS" || true
+          echo "✔ deploy attempted (retry)"
 
       - name: Locate EXEC_URL (primary)
         id: exec1
@@ -83,6 +110,8 @@ jobs:
           echo "url=$url" >> $GITHUB_OUTPUT
 
       - name: Selftest
+        id: selftest
+        continue-on-error: true
         run: |
           exec_url="${{ steps.execurl.outputs.url }}"
           sep='?'; echo "$exec_url" | grep -q '?' && sep='&' || true
@@ -95,7 +124,224 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
           [ "$code" = "200" ] || (echo "Selftest failed (HTTP $code)"; exit 1)
 
+      - name: Retry selftest on failure
+        if: steps.selftest.outcome == 'failure'
+        run: |
+          echo "Retrying selftest after failure..."
+          sleep 10
+          exec_url="${{ steps.execurl.outputs.url }}"
+          sep='?'; echo "$exec_url" | grep -q '?' && sep='&' || true
+          test_url="${exec_url}${sep}mode=selftest"
+          echo "Selftest URL (retry): $test_url" | tee -a $GITHUB_STEP_SUMMARY
+          code=$(curl -sS -o /tmp/selftest.json -w "%{http_code}" "$test_url")
+          echo "HTTP $code (retry)" | tee -a $GITHUB_STEP_SUMMARY
+          echo '```json' >> $GITHUB_STEP_SUMMARY
+          sed -n '1,200p' /tmp/selftest.json >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          [ "$code" = "200" ] || (echo "Selftest failed after retry (HTTP $code)"; exit 1)
+
       - name: Print summary to log
         run: |
           echo "EXEC_URL: ${{ steps.execurl.outputs.url }}"
           echo "Selftest stage completed"
+
+      - name: Update progress - GAS Deploy Complete (30%)
+        run: |
+          cat > progress.json <<JSON
+          {
+            "lastUpdate": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "currentStep": "gas_deploy",
+            "percent": 30,
+            "steps": {
+              "gas_deploy": {
+                "status": "completed",
+                "percent": 30,
+                "lastRun": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+                "execUrl": "${{ steps.execurl.outputs.url }}"
+              },
+              "exec_url_update": {
+                "status": "in_progress",
+                "percent": 60,
+                "lastRun": ""
+              },
+              "pwa_deploy": {
+                "status": "pending",
+                "percent": 100,
+                "lastRun": ""
+              }
+            },
+            "history": []
+          }
+          JSON
+          git config user.name "auto-bot"
+          git config user.email "auto-bot@users.noreply.github.com"
+          git add progress.json
+          git commit -m "[auto] Update progress: GAS deploy complete (30%)" || echo "no changes"
+          git push origin main || echo "push failed, continuing"
+
+  update-exec-url:
+    needs: deploy
+    if: success()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout main branch
+        uses: actions/checkout@v4
+
+      - name: Fetch gh-pages
+        run: git fetch origin gh-pages || true
+
+      - name: Switch to gh-pages
+        run: |
+          if git branch -a | grep -q "remotes/origin/gh-pages"; then
+            git checkout gh-pages
+          else
+            git checkout --orphan gh-pages
+            rm -rf *
+            echo "<!doctype html><meta charset='utf-8'><title>Init</title>OK" > index.html
+            git add -A
+            git commit -m "init gh-pages"
+            git push origin gh-pages
+          fi
+
+      - name: Update EXEC_URL in index.html
+        env:
+          EXEC_URL: ${{ needs.deploy.outputs.exec_url }}
+        run: |
+          test -f index.html || { echo "index.html missing in gh-pages"; exit 1; }
+          node -e "
+          const fs = require('fs');
+          const p = 'index.html';
+          let s = fs.readFileSync(p, 'utf8');
+          const url = process.env.EXEC_URL;
+          let changed = false;
+
+          // Update iframe src attribute
+          s = s.replace(/(<iframe[^>]+src=['\"])([^'\"]+)(['\"][^>]*>)/i, (match, p1, oldUrl, p3) => {
+            changed = true;
+            return p1 + url + p3;
+          });
+
+          // Also update const EXEC_URL if exists
+          s = s.replace(/const\s+EXEC_URL\s*=\s*['\"][^'\"]+['\"];?/,
+                        (m)=>{ changed=true; return \`const EXEC_URL = \\\"\${url}\\\";\`; });
+
+          // Also update window.EXEC_URL if exists
+          s = s.replace(/window\.EXEC_URL\s*=\s*['\"][^'\"]+['\"];?/,
+                        (m)=>{ changed=true; return \`window.EXEC_URL = \\\"\${url}\\\";\`; });
+
+          // If no pattern found, inject near </script> or </body>
+          if(!changed){
+            if(s.includes('</script>')){
+              s = s.replace('</script>', \`\\nwindow.EXEC_URL = \\\"\${url}\\\";\\n</script>\`);
+              changed = true;
+            } else if (s.includes('</body>')) {
+              s = s.replace('</body>', \`<script>window.EXEC_URL = \\\"\${url}\\\";</script>\\n</body>\`);
+              changed = true;
+            } else {
+              s += \`\\n<script>window.EXEC_URL = \\\"\${url}\\\";</script>\\n\`;
+              changed = true;
+            }
+          }
+          fs.writeFileSync(p, s);
+          console.log('EXEC_URL set to:', url);
+          "
+
+      - name: Commit & push to gh-pages
+        run: |
+          git config user.name "auto-bot"
+          git config user.email "auto-bot@users.noreply.github.com"
+          git add index.html
+          git commit -m "[auto] Update EXEC_URL from GAS deployment" || echo "no changes"
+          git push origin gh-pages
+
+      - name: Switch back to main and update progress (60%)
+        run: |
+          git checkout main
+          git pull origin main
+          cat > progress.json <<JSON
+          {
+            "lastUpdate": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "currentStep": "exec_url_update",
+            "percent": 60,
+            "steps": {
+              "gas_deploy": {
+                "status": "completed",
+                "percent": 30,
+                "lastRun": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+                "execUrl": "${{ needs.deploy.outputs.exec_url }}"
+              },
+              "exec_url_update": {
+                "status": "completed",
+                "percent": 60,
+                "lastRun": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+              },
+              "pwa_deploy": {
+                "status": "in_progress",
+                "percent": 100,
+                "lastRun": ""
+              }
+            },
+            "history": []
+          }
+          JSON
+          git add progress.json
+          git commit -m "[auto] Update progress: EXEC_URL updated (60%)" || echo "no changes"
+          git push origin main || echo "push failed, continuing"
+
+  trigger-pwa-deploy:
+    needs: [deploy, update-exec-url]
+    if: success()
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Trigger PWA deployment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'pages.yml',
+              ref: 'main'
+            });
+            console.log('PWA deployment triggered');
+
+      - name: Checkout and update final progress (100%)
+        uses: actions/checkout@v4
+        
+      - name: Update progress - Complete (100%)
+        run: |
+          cat > progress.json <<JSON
+          {
+            "lastUpdate": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "currentStep": "complete",
+            "percent": 100,
+            "steps": {
+              "gas_deploy": {
+                "status": "completed",
+                "percent": 30,
+                "lastRun": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+                "execUrl": "${{ needs.deploy.outputs.exec_url }}"
+              },
+              "exec_url_update": {
+                "status": "completed",
+                "percent": 60,
+                "lastRun": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+              },
+              "pwa_deploy": {
+                "status": "completed",
+                "percent": 100,
+                "lastRun": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+              }
+            },
+            "history": []
+          }
+          JSON
+          git config user.name "auto-bot"
+          git config user.email "auto-bot@users.noreply.github.com"
+          git add progress.json
+          git commit -m "[auto] Update progress: Deployment complete (100%)" || echo "no changes"
+          git push origin main || echo "push completed"

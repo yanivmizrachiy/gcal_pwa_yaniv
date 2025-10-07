@@ -4,6 +4,12 @@ on:
     types: [opened, edited]
   issue_comment:
     types: [created]
+  workflow_call:
+    inputs:
+      exec_url:
+        description: 'EXEC_URL to set (for automated calls)'
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -12,18 +18,30 @@ permissions:
 jobs:
   set-exec-url:
     if: >
-      contains(github.event.issue.title, 'Set EXEC_URL')
+      github.event_name == 'workflow_call'
+      || contains(github.event.issue.title, 'Set EXEC_URL')
       || (github.event_name == 'issue_comment' && contains(github.event.issue.title, 'Set EXEC_URL'))
     runs-on: ubuntu-latest
     steps:
-      - name: Parse URL from Issue/Comment
+      - name: Parse URL from Issue/Comment or use input
         id: parse
         uses: actions/github-script@v7
         with:
           script: |
             const core = require('@actions/core');
+            
+            // If called as workflow_call, use the input
+            if (context.eventName === 'workflow_call' || '${{ inputs.exec_url }}') {
+              const url = '${{ inputs.exec_url }}';
+              if (url && url !== '') {
+                core.setOutput('exec_url', url);
+                console.log('Using workflow_call input URL:', url);
+                return;
+              }
+            }
+            
+            // Otherwise parse from issue/comment
             const body = (context.payload.comment?.body ?? context.payload.issue?.body ?? '');
-            // קולט גם קישורי exec ישנים וגם חדשים
             const re = /(https:\/\/script\.google(?:usercontent|)\.com\/[^\s"'<>]+|https:\/\/script\.google\.com\/macros\/s\/[^\s"'<>]+\/exec)/i;
             const m = body.match(re);
             if (!m) {
@@ -31,6 +49,7 @@ jobs:
               return;
             }
             core.setOutput('exec_url', m[1]);
+            console.log('Parsed URL from issue/comment:', m[1]);
 
       - name: Checkout default branch
         uses: actions/checkout@v4
@@ -97,6 +116,7 @@ jobs:
           git push origin gh-pages
 
       - name: Comment result
+        if: github.event_name == 'issues' || github.event_name == 'issue_comment'
         uses: actions/github-script@v7
         with:
           script: |
