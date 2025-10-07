@@ -1,0 +1,75 @@
+name: Autonomy Analytics
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Run 3 times daily: 06:00, 14:00, 22:00 UTC
+    - cron: '0 6,14,22 * * *'
+
+permissions:
+  contents: write
+
+jobs:
+  aggregate:
+    name: Aggregate Analytics Timeline
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run aggregation script
+        run: |
+          bash scripts/aggregate_reports.sh
+
+      - name: Check for changes
+        id: changes
+        run: |
+          if [ -f .autonomy/analytics/timeline.json ]; then
+            if git diff --stat .autonomy/analytics/timeline.json | grep -q '.*'; then
+              size_change=$(git diff .autonomy/analytics/timeline.json | wc -c)
+              echo "changed=true" >> $GITHUB_OUTPUT
+              echo "size_change=$size_change" >> $GITHUB_OUTPUT
+              echo "Timeline changed: $size_change bytes diff"
+            else
+              echo "changed=false" >> $GITHUB_OUTPUT
+              echo "No changes to timeline"
+            fi
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "Timeline file not found"
+          fi
+
+      - name: Commit and push if changed
+        if: steps.changes.outputs.changed == 'true' && steps.changes.outputs.size_change > 128
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Get entry count from timeline.json
+          entry_count=$(node -p "require('./.autonomy/analytics/timeline.json').metadata.totalEntries" || echo "unknown")
+          
+          git add .autonomy/analytics/timeline.json
+          git commit -m "[autonomy-analytics] aggregated timeline: entries=$entry_count, diff=${size_change}B"
+          git push
+        env:
+          size_change: ${{ steps.changes.outputs.size_change }}
+
+      - name: Summary
+        run: |
+          if [ -f .autonomy/analytics/timeline.json ]; then
+            echo "## Analytics Timeline" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
+            cat .autonomy/analytics/timeline.json >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "No timeline generated" >> $GITHUB_STEP_SUMMARY
+          fi

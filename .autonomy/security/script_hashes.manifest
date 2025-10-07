@@ -1,0 +1,16 @@
+# SHA256 Hash Manifest for Core Automation Scripts
+# Generated: 2025-10-07T21:03:51Z
+# Format: <hash> <filepath>
+#
+# This file ensures integrity of critical automation scripts.
+# Verify with: node scripts/verify_hashes.js
+
+04b31bbfd3d076db2609e9918eebdf60c187a4ef4737b5ae4e9d8885e2c3ed96  scripts/verify_hashes.js
+accafb458d766e39c883c354370a691c003e6d0a5665b551bd5ab2c19b5f0f9c  scripts/generate_hash_manifest.sh
+d15e858859f4bbbbaf894813841b835fbd62a92b696c1f25a72a7e3a8234c3d4  scripts/aggregate_reports.sh
+30e8aef33bc9353adfb49350c7ce67bcc0f407d9adff12b3ac6e9e588e5df223  .github/workflows/codeql.yml
+76b0f3941476cd727f12db74ab3a2e6d58c3ac66e490fe5d59b960978181b49c  .github/workflows/gas-deploy.yml
+1ade8295b423c994c6964c97cc6f88ae879189f73fa5545ed55d30b5aedc1f99  .github/workflows/issue-commands.yml
+a7a6f2f79ab499ecc7ab1a9f90359f12c1529ddd89ab4163ac699a6765e00174  .github/workflows/pages.yml
+dd3fc1cd100389621b0d1fcd77c7b3fb842bb70f50f8beb4181512ef56e8e166  .github/workflows/set-exec-url.yml
+839c83d683bdb1ba6fe686e60725ff0efb93415420a06180d653858d252ca440  .github/workflows/update-from-issue.yml
