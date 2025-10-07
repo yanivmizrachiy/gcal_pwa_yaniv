@@ -1,0 +1,49 @@
+name: Monitor Health
+
+on:
+  schedule:
+    # Every 30 minutes
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  health-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Health check
+        env:
+          WEB_APP_URL: ${{ secrets.WEB_APP_URL }}
+        run: |
+          echo "Checking health of: $WEB_APP_URL"
+
+          # Determine separator for query string
+          sep='?'
+          echo "$WEB_APP_URL" | grep -q '?' && sep='&' || true
+          test_url="${WEB_APP_URL}${sep}mode=selftest"
+
+          echo "Fetching: $test_url"
+
+          # Fetch selftest endpoint
+          http_code=$(curl -sS -o /tmp/health.json -w "%{http_code}" "$test_url")
+          echo "HTTP Status: $http_code"
+
+          # Check HTTP status
+          if [ "$http_code" != "200" ]; then
+            echo "::warning::Health check failed with HTTP $http_code"
+            cat /tmp/health.json 2>/dev/null || echo "(no response body)"
+            exit 1
+          fi
+
+          # Check JSON response
+          if ! grep -q '"ok"[[:space:]]*:[[:space:]]*true' /tmp/health.json; then
+            echo "::warning::Health check returned ok:false"
+            cat /tmp/health.json
+            exit 1
+          fi
+
+          echo "✔ Health check passed"
+          cat /tmp/health.json
