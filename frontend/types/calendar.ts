@@ -17,6 +17,11 @@ export interface CreateEventRequest {
   location?: string;
   color?: string;
   reminders?: number[];
+  recurrence?: {
+    frequency?: 'daily' | 'weekly' | 'monthly' | 'yearly';
+    until?: string;
+    times?: number;
+  };
 }
 
 export interface UpdateEventRequest {

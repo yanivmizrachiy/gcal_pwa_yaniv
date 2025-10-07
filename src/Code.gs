@@ -140,6 +140,14 @@ function handleFindEvents(options) {
  * Handle createEvent action
  */
 function handleCreateEvent(eventData) {
+  // Validate recurrence: cannot have both 'until' and 'times'
+  if (eventData.recurrence && eventData.recurrence.until && eventData.recurrence.times) {
+    return {
+      ok: false,
+      error: 'לא ניתן לציין גם תאריך סיום (until) וגם מספר פעמים (times) בחזרתיות'
+    };
+  }
+  
   var cal = CalendarApp.getDefaultCalendar();
   var title = eventData.title || 'ללא כותרת';
   var start = new Date(eventData.start);
