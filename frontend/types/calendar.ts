@@ -59,10 +59,42 @@ export interface ApiResponse<T = any> {
   data?: T;
 }
 
+export interface SelfTestSampleParsed {
+  success: boolean;
+  operation: 'create' | 'update' | 'delete';
+  mock: true;
+  changes?: any;
+  eventId?: string | null;
+  tokens: NlpToken[];
+  needDisambiguation?: boolean;
+  candidates?: Array<{
+    id: string;
+    title: string;
+    start: string;
+    end: string;
+    mock: true;
+  }>;
+  guestsAdd?: string[];
+  guestsRemove?: string[];
+}
+
+export interface SelfTestSample {
+  input: string;
+  parsed: SelfTestSampleParsed;
+  description: string;
+}
+
 export interface SelfTestResponse extends ApiResponse {
   action: 'selfTest';
   nlpVersion: string;
   now: string;
+  samples?: {
+    updateDelete?: {
+      sampleUpdate?: SelfTestSample;
+      sampleGuests?: SelfTestSample;
+      sampleDeleteAmbiguous?: SelfTestSample;
+    };
+  };
 }
 
 export interface FindEventsResponse extends ApiResponse {
