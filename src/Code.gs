@@ -570,33 +570,41 @@ function parseDateTimeFromTokens(tokens, warnings) {
     durationMinutes = 60;
   }
   
-  // Look for part-of-day tokens
+  // Look for part-of-day tokens (check textJoined for multi-word phrases)
   var partOfDay = null;
   var defaultHour = null;
   var defaultMinute = 0;
   
-  for (var j = 0; j < tokens.length; j++) {
-    var token = tokens[j].text;
-    if (token === 'בבוקר' || token === 'בוקר') {
-      partOfDay = 'morning';
-      defaultHour = 9;
-      defaultMinute = 0;
-      break;
-    } else if (token === 'בצהריים' || token === 'צהריים') {
-      partOfDay = 'noon';
-      defaultHour = 12;
-      defaultMinute = 30;
-      break;
-    } else if (token === 'אחר הצהריים' || token.indexOf('אחה"צ') >= 0) {
-      partOfDay = 'afternoon';
-      defaultHour = 15;
-      defaultMinute = 0;
-      break;
-    } else if (token === 'בערב' || token === 'ערב') {
-      partOfDay = 'evening';
-      defaultHour = 19;
-      defaultMinute = 0;
-      break;
+  // Check multi-word phrases first
+  if (textJoined.indexOf('אחר הצהריים') >= 0) {
+    partOfDay = 'afternoon';
+    defaultHour = 15;
+    defaultMinute = 0;
+  } else {
+    // Check single-word tokens
+    for (var j = 0; j < tokens.length; j++) {
+      var token = tokens[j].text;
+      if (token === 'בבוקר' || token === 'בוקר') {
+        partOfDay = 'morning';
+        defaultHour = 9;
+        defaultMinute = 0;
+        break;
+      } else if (token === 'בצהריים' || token === 'צהריים') {
+        partOfDay = 'noon';
+        defaultHour = 12;
+        defaultMinute = 30;
+        break;
+      } else if (token.indexOf('אחה"צ') >= 0) {
+        partOfDay = 'afternoon';
+        defaultHour = 15;
+        defaultMinute = 0;
+        break;
+      } else if (token === 'בערב' || token === 'ערב') {
+        partOfDay = 'evening';
+        defaultHour = 19;
+        defaultMinute = 0;
+        break;
+      }
     }
   }
   
@@ -660,7 +668,7 @@ function extractTitle(tokens, dateTime, warnings) {
   }
   
   // Functional tokens to strip
-  var skipTypes = ['time', 'date', 'color', 'reminder', 'number'];
+  var skipTypes = ['time', 'date', 'color', 'reminder', 'number', 'timeofday', 'duration', 'recurrence'];
   var skipWords = [
     // Operation verbs
     'צור', 'צרי', 'יצירה', 'הוסף', 'הוסיפי', 'הוספה',
@@ -673,9 +681,9 @@ function extractTitle(tokens, dateTime, warnings) {
     // Recurrence tokens
     'כל', 'עד', 'פעמים', 'פעם',
     // Part-of-day tokens
-    'בבוקר', 'בוקר', 'בצהריים', 'צהריים', 'אחר הצהריים', 'אחה"צ', 'בערב', 'ערב',
+    'בבוקר', 'בוקר', 'בצהריים', 'צהריים', 'אחר', 'הצהריים', 'אחה"צ', 'בערב', 'ערב',
     // Duration words
-    'שעה', 'שעתיים', 'דקות', 'דקה', 'רבע'
+    'שעה', 'שעתיים', 'דקות', 'דקה', 'רבע', 'שלושת', 'רבעי', '¾'
   ];
   
   var titleWords = [];
