@@ -49,7 +49,7 @@ function doGet(e) {
 
 /**
  * doPost - Main API endpoint for CRUD operations and NLP
- * Actions: selfTest, findEvents, createEvent, updateEvent, deleteEvent, parseNlp
+ * Actions: selfTest, findEvents, createEvent, updateEvent, deleteEvent, parseNlp, text
  */
 function doPost(e) {
   try {
@@ -74,6 +74,11 @@ function doPost(e) {
         response = handleDeleteEvent(payload.eventId);
         break;
       case 'parseNlp':
+        response = handleParseNlp(payload.text, payload.parseOnly || false);
+        break;
+      case 'text':
+        // Action alias: 'text' delegates to handleParseNlp
+        // Future UI can pass parseOnly flag, current implementation uses false as default
         response = handleParseNlp(payload.text, payload.parseOnly || false);
         break;
       default:
@@ -132,7 +137,8 @@ function handleFindEvents(options) {
     ok: true,
     action: 'findEvents',
     count: events.length,
-    events: events
+    events: events,
+    items: events  // Backwards-compatible alias for existing UI code expecting data.items
   };
 }
 
@@ -188,7 +194,7 @@ function handleUpdateEvent(eventId, changes) {
   var event = cal.getEventById(eventId);
   
   if (!event) {
-    return { ok: false, error: 'אירוע לא נמצא' };
+    return { ok: false, action: 'updateEvent', error: 'אירוע לא נמצא' };
   }
   
   var changedFields = [];
@@ -264,7 +270,7 @@ function handleDeleteEvent(eventId) {
   var event = cal.getEventById(eventId);
   
   if (!event) {
-    return { ok: false, error: 'אירוע לא נמצא' };
+    return { ok: false, action: 'deleteEvent', error: 'אירוע לא נמצא' };
   }
   
   var title = event.getTitle();
@@ -286,6 +292,7 @@ function handleParseNlp(text, parseOnly) {
   if (!interpreted.success) {
     return {
       ok: false,
+      action: 'parseNlp',
       error: interpreted.error || 'לא הצלחתי להבין את הפקודה',
       tokens: interpreted.tokens
     };
@@ -313,7 +320,7 @@ function handleParseNlp(text, parseOnly) {
     result = handleDeleteEvent(interpreted.eventId);
     result.interpreted = interpreted;
   } else {
-    return { ok: false, error: 'פעולה לא נתמכת: ' + interpreted.operation };
+    return { ok: false, action: 'parseNlp', error: 'פעולה לא נתמכת: ' + interpreted.operation };
   }
   
   return result;
