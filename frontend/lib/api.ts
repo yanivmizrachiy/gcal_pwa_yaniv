@@ -9,6 +9,8 @@ import {
   UpdateEventResponse,
   DeleteEventResponse,
   ParseNlpResponse,
+  SuggestSlotsOptions,
+  SuggestSlotsResponse,
 } from '@/types/calendar';
 
 const API_URL = process.env.NEXT_PUBLIC_EXEC_URL || '';
@@ -103,6 +105,13 @@ export async function parseNlp(
   parseOnly: boolean = false
 ): Promise<ParseNlpResponse> {
   return post<ParseNlpResponse>('parseNlp', { text, parseOnly });
+}
+
+/**
+ * Suggest free time slots (NLP v2)
+ */
+export async function suggestSlots(options?: SuggestSlotsOptions): Promise<SuggestSlotsResponse> {
+  return post<SuggestSlotsResponse>('suggestSlots', { options });
 }
 
 /**
