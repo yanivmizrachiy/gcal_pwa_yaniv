@@ -176,9 +176,21 @@ The workflows require these permissions:
 ### Monitoring
 
 #### Check Deployment Status
+
+**Quick Check Script** (Recommended):
+```bash
+./scripts/check-deployment.sh
+```
+
+**Manual Checks**:
 1. View the `progress.json` file in the main branch
 2. Check GitHub Actions runs for detailed logs
 3. Visit the GitHub Pages site to verify the PWA is updated
+
+**View Progress JSON**:
+```bash
+curl https://raw.githubusercontent.com/yanivmizrachiy/gcal_pwa_yaniv/main/progress.json | jq
+```
 
 #### Common Issues
 
@@ -265,6 +277,21 @@ The app supports Hebrew natural language commands:
 - **GitHub Actions** - CI/CD automation
 - **GitHub Pages** - PWA hosting
 - **Google Apps Script** - Backend hosting
+
+## 🛠️ Utility Scripts
+
+### Check Deployment Status
+```bash
+./scripts/check-deployment.sh
+```
+
+This script provides a comprehensive overview of:
+- Current deployment progress
+- Recent workflow runs
+- Health status of GAS backend and PWA frontend
+- EXEC_URL information
+
+**Requirements**: `curl`, `jq` (optional), `gh` (optional)
 
 ## 📄 License
 
