@@ -42,6 +42,19 @@ export interface NlpToken {
   type: 'time' | 'date' | 'color' | 'reminder' | 'number' | 'text';
 }
 
+export interface DisambiguationCandidate {
+  id: string;
+  title: string;
+  start: string;
+  end: string;
+  score: number;
+}
+
+export interface NlpDisambiguation {
+  query: string;
+  candidates: DisambiguationCandidate[];
+}
+
 export interface NlpInterpretation {
   success: boolean;
   tokens: NlpToken[];
@@ -50,6 +63,8 @@ export interface NlpInterpretation {
   changes?: UpdateEventRequest;
   eventId?: string | null;
   error?: string | null;
+  disambiguate?: NlpDisambiguation | null;
+  warnings?: string[];
 }
 
 export interface ApiResponse<T = any> {
