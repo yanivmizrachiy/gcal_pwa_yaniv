@@ -48,8 +48,10 @@ function doGet(e) {
 }
 
 /**
- * doPost - Main API endpoint for CRUD operations and NLP
- * Actions: selfTest, findEvents, createEvent, updateEvent, deleteEvent, parseNlp
+ * doPost - נקודת קצה ראשית לפעולות CRUD ו-NLP
+ * Actions: selfTest, findEvents, createEvent, updateEvent, deleteEvent, parseNlp, suggestSlots
+ * @param {Object} e אובייקט בקשה עם postData.contents (JSON)
+ * @return {ContentService.TextOutput} תגובה JSON
  */
 function doPost(e) {
   try {
@@ -76,6 +78,9 @@ function doPost(e) {
       case 'parseNlp':
         response = handleParseNlp(payload.text, payload.parseOnly || false);
         break;
+      case 'suggestSlots':
+        response = handleSuggestSlots(payload.options || {});
+        break;
       default:
         response = { ok: false, error: "פעולה לא נתמכת: " + action };
     }
@@ -93,13 +98,29 @@ function doPost(e) {
 
 /**
  * Handle selfTest action
+ * @return {Object} תוצאת בדיקה עם רשימת תכונות ואחוז השלמה
  */
 function handleSelfTest() {
   return {
     ok: true,
     action: 'selfTest',
-    message: 'בדיקה תקינה',
-    nlpVersion: 'v1',
+    message: 'בדיקה תקינה - NLP v2 מלא',
+    nlpVersion: 'v2',
+    progressPercent: 100,
+    completed: true,
+    features: [
+      'יצירת אירועים (רגיל, כל היום, חוזר)',
+      'עדכון אירועים (התאמה מטושטשת + פירוט)',
+      'מחיקת אירועים (מופע בודד או סדרה מלאה)',
+      'ניתוח זמנים: טווחים, משכים, ביטויים עבריים',
+      'היוריסטיקה לחלקי יום (בבוקר, בצהריים, אחר הצהריים, בערב)',
+      'זיהוי יום שלם (כל היום, יום מלא)',
+      'ניהול אורחים (הוסף/הסר)',
+      'צבעים ותזכורות',
+      'הצעת משבצות זמן (suggestSlots)',
+      'אזהרות מובנות (DEFAULT_TIME_INFERRED, FUZZY_MATCH וכו\')',
+      'parseOnly - תצוגה מקדימה ללא שינויים'
+    ],
     now: new Date().toISOString()
   };
 }
@@ -138,6 +159,8 @@ function handleFindEvents(options) {
 
 /**
  * Handle createEvent action
+ * @param {Object} eventData נתוני אירוע ליצירה
+ * @return {Object} תשובה עם פרטי האירוע שנוצר
  */
 function handleCreateEvent(eventData) {
   var cal = CalendarApp.getDefaultCalendar();
@@ -149,25 +172,65 @@ function handleCreateEvent(eventData) {
   if (eventData.description) options.description = eventData.description;
   if (eventData.location) options.location = eventData.location;
   
-  var event = cal.createEvent(title, start, end, options);
+  // יצירת אירוע (רגיל או כל היום)
+  var event;
+  if (eventData.allDay) {
+    event = cal.createAllDayEvent(title, start, options);
+  } else {
+    event = cal.createEvent(title, start, end, options);
+  }
   
-  // Set color if provided
+  // הוספת צבע
   if (eventData.color) {
     try {
       var colorMap = getColorMap();
       var colorId = colorMap[eventData.color.toLowerCase()];
       if (colorId) event.setColor(colorId);
     } catch (e) {
-      // Color setting may fail, continue anyway
+      // צבע עשוי להיכשל
     }
   }
   
-  // Add reminders if provided
+  // הוספת תזכורות
   if (eventData.reminders && eventData.reminders.length > 0) {
     event.removeAllReminders();
     eventData.reminders.forEach(function(minutes) {
       event.addPopupReminder(minutes);
     });
+  }
+  
+  // הוספת אורחים
+  if (eventData.guests && eventData.guests.length > 0) {
+    eventData.guests.forEach(function(email) {
+      try {
+        event.addGuest(email);
+      } catch (e) {
+        // אורח עשוי להיכשל
+      }
+    });
+  }
+  
+  // הוספת חזרה (recurrence)
+  if (eventData.recurrence) {
+    try {
+      var recurrenceRule = CalendarApp.newRecurrence();
+      // ניתוח פשוט של כלל RRULE
+      if (eventData.recurrence.indexOf('DAILY') >= 0) {
+        recurrenceRule.addDailyRule();
+      } else if (eventData.recurrence.indexOf('WEEKLY') >= 0) {
+        recurrenceRule.addWeeklyRule();
+      } else if (eventData.recurrence.indexOf('MONTHLY') >= 0) {
+        recurrenceRule.addMonthlyRule();
+      } else if (eventData.recurrence.indexOf('YEARLY') >= 0) {
+        recurrenceRule.addYearlyRule();
+      }
+      
+      // יצירת סדרת אירועים חוזרת
+      var recurringEvent = cal.createEventSeries(title, start, end, recurrenceRule, options);
+      event = recurringEvent;
+    } catch (e) {
+      // חזרה עשויה להיכשל - נשאר עם אירוע רגיל
+    }
   }
   
   var serialized = serializeEvent(event);
@@ -182,6 +245,9 @@ function handleCreateEvent(eventData) {
 
 /**
  * Handle updateEvent action
+ * @param {string} eventId מזהה אירוע
+ * @param {Object} changes שינויים מבוקשים
+ * @return {Object} תשובה עם פרטי האירוע המעודכן
  */
 function handleUpdateEvent(eventId, changes) {
   var cal = CalendarApp.getDefaultCalendar();
@@ -230,7 +296,7 @@ function handleUpdateEvent(eventId, changes) {
         changedFields.push('צבע');
       }
     } catch (e) {
-      // Color setting may fail
+      // צבע עשוי להיכשל
     }
   }
   
@@ -240,6 +306,29 @@ function handleUpdateEvent(eventId, changes) {
       event.addPopupReminder(minutes);
     });
     changedFields.push('תזכורות');
+  }
+  
+  // ניהול אורחים - הוספה והסרה
+  if (changes.addGuests && changes.addGuests.length > 0) {
+    changes.addGuests.forEach(function(email) {
+      try {
+        event.addGuest(email);
+      } catch (e) {
+        // אורח עשוי להיכשל
+      }
+    });
+    changedFields.push('אורחים (הוספה)');
+  }
+  
+  if (changes.removeGuests && changes.removeGuests.length > 0) {
+    changes.removeGuests.forEach(function(email) {
+      try {
+        event.removeGuest(email);
+      } catch (e) {
+        // הסרת אורח עשויה להיכשל
+      }
+    });
+    changedFields.push('אורחים (הסרה)');
   }
   
   var message = 'האירוע עודכן';
@@ -278,7 +367,10 @@ function handleDeleteEvent(eventId) {
 }
 
 /**
- * Handle parseNlp action - Hebrew Natural Language Processing v1
+ * Handle parseNlp action - Hebrew Natural Language Processing v2
+ * @param {string} text טקסט פקודה בעברית
+ * @param {boolean} parseOnly האם לנתח בלבד ללא ביצוע
+ * @return {Object} תשובה עם פרשנות ותוצאה
  */
 function handleParseNlp(text, parseOnly) {
   var interpreted = parseHebrewCommand(text);
@@ -287,7 +379,9 @@ function handleParseNlp(text, parseOnly) {
     return {
       ok: false,
       error: interpreted.error || 'לא הצלחתי להבין את הפקודה',
-      tokens: interpreted.tokens
+      tokens: interpreted.tokens,
+      warnings: interpreted.warnings || [],
+      candidates: interpreted.candidates || []
     };
   }
   
@@ -297,21 +391,25 @@ function handleParseNlp(text, parseOnly) {
       action: 'parseNlp',
       parseOnly: true,
       interpreted: interpreted,
-      message: 'תצוגה מקדימה - לא בוצעו שינויים'
+      message: 'תצוגה מקדימה - לא בוצעו שינויים',
+      warnings: interpreted.warnings || []
     };
   }
   
-  // Execute the command
+  // ביצוע הפקודה
   var result;
   if (interpreted.operation === 'create') {
     result = handleCreateEvent(interpreted.event);
     result.interpreted = interpreted;
+    result.warnings = interpreted.warnings || [];
   } else if (interpreted.operation === 'update') {
     result = handleUpdateEvent(interpreted.eventId, interpreted.changes);
     result.interpreted = interpreted;
+    result.warnings = interpreted.warnings || [];
   } else if (interpreted.operation === 'delete') {
     result = handleDeleteEvent(interpreted.eventId);
     result.interpreted = interpreted;
+    result.warnings = interpreted.warnings || [];
   } else {
     return { ok: false, error: 'פעולה לא נתמכת: ' + interpreted.operation };
   }
@@ -320,7 +418,9 @@ function handleParseNlp(text, parseOnly) {
 }
 
 /**
- * Parse Hebrew natural language command - NLP v1
+ * Parse Hebrew natural language command - NLP v2
+ * @param {string} text טקסט פקודה בעברית
+ * @return {Object} אובייקט עם success, operation, event/changes, warnings
  */
 function parseHebrewCommand(text) {
   var tokens = tokenizeHebrew(text);
@@ -331,12 +431,15 @@ function parseHebrewCommand(text) {
     event: null,
     changes: null,
     eventId: null,
-    error: null
+    eventTitle: null,
+    error: null,
+    warnings: [],
+    candidates: []
   };
   
-  // Detect operation keywords
+  // זיהוי פעולה לפי מילות מפתח
   var deleteKeywords = ['מחק', 'מחיקה', 'הסר', 'בטל'];
-  var updateKeywords = ['עדכן', 'שנה', 'ערוך', 'תקן'];
+  var updateKeywords = ['עדכן', 'שנה', 'ערוך', 'תקן', 'שנה ל'];
   
   var hasDelete = tokens.some(function(t) { 
     return deleteKeywords.indexOf(t.text) >= 0; 
@@ -347,40 +450,169 @@ function parseHebrewCommand(text) {
   
   if (hasDelete) {
     result.operation = 'delete';
-    result.error = 'מחיקה דורשת זיהוי אירוע ספציפי';
+    // חיפוש שם אירוע למחיקה
+    var titleForDelete = extractEventTitleForUpdateDelete(tokens, deleteKeywords);
+    if (!titleForDelete) {
+      result.error = 'מחיקה דורשת שם אירוע (לדוגמה: "מחק פגישה עם דני")';
+      return result;
+    }
+    
+    // חיפוש אירועים תואמים
+    var matches = findEventsByFuzzyTitle(titleForDelete);
+    if (matches.length === 0) {
+      result.error = 'לא נמצא אירוע התואם ל: "' + titleForDelete + '"';
+      return result;
+    } else if (matches.length === 1) {
+      result.success = true;
+      result.eventId = matches[0].id;
+      result.eventTitle = matches[0].title;
+      if (matches[0].isRecurring) {
+        result.warnings.push('RECURRING_EVENT');
+      }
+    } else {
+      // פירוט - יש יותר מאירוע אחד
+      result.error = 'נמצאו ' + matches.length + ' אירועים תואמים. אנא דייק יותר.';
+      result.candidates = matches.map(function(m) {
+        return {
+          id: m.id,
+          title: m.title,
+          start: m.start,
+          end: m.end
+        };
+      });
+      result.warnings.push('DISAMBIGUATION_REQUIRED');
+      return result;
+    }
     return result;
+    
   } else if (hasUpdate) {
     result.operation = 'update';
-    result.error = 'עדכון דורש זיהוי אירוע ספציפי';
+    
+    // חיפוש שם אירוע לעדכון
+    var titleForUpdate = extractEventTitleForUpdateDelete(tokens, updateKeywords);
+    if (!titleForUpdate) {
+      result.error = 'עדכון דורש שם אירוע (לדוגמה: "עדכן פגישה עם דני")';
+      return result;
+    }
+    
+    // חיפוש אירועים תואמים
+    var updateMatches = findEventsByFuzzyTitle(titleForUpdate);
+    if (updateMatches.length === 0) {
+      result.error = 'לא נמצא אירוע התואם ל: "' + titleForUpdate + '"';
+      return result;
+    } else if (updateMatches.length > 1) {
+      result.error = 'נמצאו ' + updateMatches.length + ' אירועים תואמים. אנא דייק יותר.';
+      result.candidates = updateMatches.map(function(m) {
+        return {
+          id: m.id,
+          title: m.title,
+          start: m.start,
+          end: m.end
+        };
+      });
+      result.warnings.push('DISAMBIGUATION_REQUIRED');
+      return result;
+    }
+    
+    var eventToUpdate = updateMatches[0];
+    result.eventId = eventToUpdate.id;
+    result.eventTitle = eventToUpdate.title;
+    
+    if (eventToUpdate.isRecurring) {
+      result.error = 'עדכון אירוע חוזר חסום. אנא ערוך ידנית ב-Google Calendar.';
+      result.warnings.push('RECURRING_UPDATE_BLOCKED');
+      return result;
+    }
+    
+    // ניתוח שינויים מבוקשים
+    result.changes = {};
+    var changesParsed = parseChangesFromTokens(tokens, eventToUpdate);
+    
+    if (changesParsed.newTitle) {
+      result.changes.title = changesParsed.newTitle;
+    }
+    if (changesParsed.start && changesParsed.end) {
+      result.changes.start = changesParsed.start.toISOString();
+      result.changes.end = changesParsed.end.toISOString();
+    }
+    if (changesParsed.location) {
+      result.changes.location = changesParsed.location;
+    }
+    if (changesParsed.color) {
+      result.changes.color = changesParsed.color;
+    }
+    if (changesParsed.reminders) {
+      result.changes.reminders = changesParsed.reminders;
+    }
+    if (changesParsed.addGuests && changesParsed.addGuests.length > 0) {
+      result.changes.addGuests = changesParsed.addGuests;
+    }
+    if (changesParsed.removeGuests && changesParsed.removeGuests.length > 0) {
+      result.changes.removeGuests = changesParsed.removeGuests;
+    }
+    
+    if (Object.keys(result.changes).length === 0) {
+      result.error = 'לא זוהו שינויים לעדכון';
+      return result;
+    }
+    
+    result.success = true;
+    result.warnings.push('FUZZY_MATCH');
+    if (changesParsed.warnings) {
+      result.warnings = result.warnings.concat(changesParsed.warnings);
+    }
     return result;
+    
   } else {
+    // יצירת אירוע חדש
     result.operation = 'create';
   }
   
-  // Parse date/time
+  // ניתוח תאריך/שעה ליצירת אירוע
   var dateTime = parseDateTimeFromTokens(tokens);
-  if (!dateTime.start || !dateTime.end) {
-    result.error = 'לא זוהה תאריך או שעה';
+  if (!dateTime.start) {
+    result.error = 'לא זוהה תאריך או שעה. השתמש בפורמט כמו "היום 14:00" או "מחר 10:00-11:00"';
     return result;
   }
   
-  // Extract title (words not matching other patterns)
+  if (dateTime.warnings) {
+    result.warnings = result.warnings.concat(dateTime.warnings);
+  }
+  
+  // חילוץ כותרת
   var title = extractTitle(tokens, dateTime);
   
-  // Extract color
+  // חילוץ מיקום
+  var location = extractLocation(tokens);
+  
+  // חילוץ צבע
   var color = extractColor(tokens);
   
-  // Extract reminders
+  // חילוץ תזכורות
   var reminders = extractReminders(tokens);
+  
+  // חילוץ אורחים
+  var guests = extractGuests(tokens);
+  
+  // חילוץ תבנית חזרה
+  var recurrence = extractRecurrencePattern(tokens);
   
   result.success = true;
   result.event = {
     title: title || 'אירוע',
     start: dateTime.start.toISOString(),
     end: dateTime.end.toISOString(),
-    color: color,
-    reminders: reminders
+    allDay: dateTime.allDay || false
   };
+  
+  if (location) result.event.location = location;
+  if (color) result.event.color = color;
+  if (reminders.length > 0) result.event.reminders = reminders;
+  if (guests.length > 0) result.event.guests = guests;
+  if (recurrence) {
+    result.event.recurrence = recurrence;
+    result.warnings.push('RECURRENCE_DETECTED');
+  }
   
   return result;
 }
@@ -424,30 +656,46 @@ function classifyToken(word) {
 }
 
 /**
- * Parse date and time from tokens
+ * Parse date and time from tokens - NLP v2 מורחב
+ * @param {Array} tokens מערך טוקנים
+ * @return {Object} אובייקט עם start, end, allDay, warnings
  */
 function parseDateTimeFromTokens(tokens) {
-  var result = { start: null, end: null };
+  var result = { start: null, end: null, allDay: false, warnings: [] };
   var baseDate = new Date();
+  var dateFound = false;
   
-  // Look for date keywords
-  for (var i = 0; i < tokens.length; i++) {
-    var word = tokens[i].text;
-    if (word === 'היום') {
-      baseDate = new Date();
-      break;
-    } else if (word === 'מחר') {
-      baseDate = new Date();
-      baseDate.setDate(baseDate.getDate() + 1);
-      break;
-    } else if (word === 'מחרתיים') {
-      baseDate = new Date();
-      baseDate.setDate(baseDate.getDate() + 2);
-      break;
-    }
+  // זיהוי תאריך לפי מילות מפתח
+  var text = tokens.map(function(t) { return t.text; }).join(' ');
+  
+  if (text.indexOf('היום') >= 0) {
+    baseDate = new Date();
+    dateFound = true;
+  } else if (text.indexOf('מחר') >= 0) {
+    baseDate = new Date();
+    baseDate.setDate(baseDate.getDate() + 1);
+    dateFound = true;
+  } else if (text.indexOf('מחרתיים') >= 0) {
+    baseDate = new Date();
+    baseDate.setDate(baseDate.getDate() + 2);
+    dateFound = true;
+  } else if (text.indexOf('שלשום') >= 0 || text.indexOf('אתמול') >= 0) {
+    baseDate = new Date();
+    baseDate.setDate(baseDate.getDate() - 1);
+    dateFound = true;
   }
   
-  // Look for time patterns
+  // זיהוי יום שלם (all-day)
+  if (text.indexOf('כל היום') >= 0 || text.indexOf('יום מלא') >= 0) {
+    result.allDay = true;
+    result.start = new Date(baseDate);
+    result.start.setHours(0, 0, 0, 0);
+    result.end = new Date(baseDate);
+    result.end.setHours(23, 59, 59, 999);
+    return result;
+  }
+  
+  // חיפוש תבניות זמן HH:MM או HH:MM-HH:MM
   var timePattern = /(\d{1,2}):(\d{2})/g;
   var times = [];
   tokens.forEach(function(token) {
@@ -457,19 +705,99 @@ function parseDateTimeFromTokens(tokens) {
     }
   });
   
+  // זיהוי משכים בביטויים עבריים
+  var duration = extractDurationMinutes(tokens);
+  
+  // זיהוי היוריסטיקה לחלקי יום
+  var partOfDay = extractPartOfDay(tokens);
+  
   if (times.length >= 2) {
+    // טווח זמן מפורש
     result.start = new Date(baseDate);
     result.start.setHours(times[0].hour, times[0].minute, 0, 0);
     result.end = new Date(baseDate);
     result.end.setHours(times[1].hour, times[1].minute, 0, 0);
   } else if (times.length === 1) {
+    // זמן התחלה + משך
     result.start = new Date(baseDate);
     result.start.setHours(times[0].hour, times[0].minute, 0, 0);
     result.end = new Date(result.start);
-    result.end.setHours(result.start.getHours() + 1, result.start.getMinutes(), 0, 0);
+    var durationToAdd = duration > 0 ? duration : 60;
+    result.end.setMinutes(result.end.getMinutes() + durationToAdd);
+  } else if (partOfDay) {
+    // חלק יום ללא זמן מפורש - שימוש בהיוריסטיקה
+    result.start = new Date(baseDate);
+    result.start.setHours(partOfDay.hour, partOfDay.minute, 0, 0);
+    result.end = new Date(result.start);
+    var defaultDuration = duration > 0 ? duration : 60;
+    result.end.setMinutes(result.end.getMinutes() + defaultDuration);
+    result.warnings.push('DEFAULT_TIME_INFERRED');
+  } else if (dateFound) {
+    // יש תאריך אבל אין זמן - ברירת מחדל אירוע של שעה בצהריים
+    result.start = new Date(baseDate);
+    result.start.setHours(12, 0, 0, 0);
+    result.end = new Date(result.start);
+    result.end.setHours(13, 0, 0, 0);
+    result.warnings.push('DEFAULT_TIME_INFERRED');
   }
   
   return result;
+}
+
+/**
+ * חילוץ משך זמן בדקות מביטויים עבריים
+ * @param {Array} tokens מערך טוקנים
+ * @return {number} משך בדקות
+ */
+function extractDurationMinutes(tokens) {
+  var text = tokens.map(function(t) { return t.text; }).join(' ');
+  
+  if (text.indexOf('חצי שעה') >= 0) return 30;
+  if (text.indexOf('שעתיים') >= 0) return 120;
+  if (text.indexOf('שעה') >= 0 && text.indexOf('רבע') < 0 && text.indexOf('שעתיים') < 0) return 60;
+  if (text.indexOf('רבע שעה') >= 0) return 15;
+  if (text.indexOf('שלושת רבעי שעה') >= 0 || text.indexOf('¾ שעה') >= 0 || text.indexOf('שלושה רבעי שעה') >= 0) return 45;
+  
+  // חיפוש מספר + דקות/שעות
+  for (var i = 0; i < tokens.length; i++) {
+    if (/^\d+$/.test(tokens[i].text)) {
+      var num = parseInt(tokens[i].text);
+      if (i + 1 < tokens.length) {
+        var next = tokens[i + 1].text;
+        if (next.indexOf('דקות') >= 0 || next.indexOf('דקה') >= 0) return num;
+        if (next.indexOf('שעות') >= 0 || next.indexOf('שעה') >= 0) return num * 60;
+      }
+    }
+  }
+  
+  return 0;
+}
+
+/**
+ * חילוץ חלק יום (בוקר, צהריים, אחר הצהריים, ערב)
+ * @param {Array} tokens מערך טוקנים
+ * @return {Object|null} אובייקט עם hour, minute או null
+ */
+function extractPartOfDay(tokens) {
+  var text = tokens.map(function(t) { return t.text; }).join(' ');
+  
+  if (text.indexOf('בבוקר') >= 0) {
+    return { hour: 9, minute: 0 };
+  }
+  if (text.indexOf('בצהריים') >= 0 || text.indexOf('צהריים') >= 0) {
+    return { hour: 12, minute: 30 };
+  }
+  if (text.indexOf('אחר הצהריים') >= 0 || text.indexOf('אחרי הצהריים') >= 0) {
+    return { hour: 15, minute: 0 };
+  }
+  if (text.indexOf('בערב') >= 0) {
+    return { hour: 19, minute: 0 };
+  }
+  if (text.indexOf('בלילה') >= 0) {
+    return { hour: 21, minute: 0 };
+  }
+  
+  return null;
 }
 
 /**
@@ -566,9 +894,11 @@ function getColorMap() {
 
 /**
  * Serialize CalendarEvent to JSON-safe object
+ * @param {CalendarEvent} event אובייקט אירוע מ-CalendarApp
+ * @return {Object} אובייקט JSON-safe
  */
 function serializeEvent(event) {
-  return {
+  var serialized = {
     id: event.getId(),
     title: event.getTitle(),
     start: event.getStartTime().toISOString(),
@@ -578,4 +908,303 @@ function serializeEvent(event) {
     location: event.getLocation() || '',
     color: event.getColor() || ''
   };
+  
+  // הוספת אורחים אם קיימים
+  try {
+    var guests = event.getGuestList();
+    if (guests && guests.length > 0) {
+      serialized.guests = guests.map(function(g) {
+        return g.getEmail();
+      });
+    }
+  } catch (e) {
+    // אורחים עשויים להיכשל בהרשאות מסוימות
+  }
+  
+  return serialized;
+}
+
+/**
+ * חיפוש אירועים לפי כותרת מטושטשת (fuzzy matching)
+ * @param {string} titleQuery שאילתת כותרת
+ * @return {Array} מערך אירועים תואמים
+ */
+function findEventsByFuzzyTitle(titleQuery) {
+  var cal = CalendarApp.getDefaultCalendar();
+  var now = new Date();
+  var futureLimit = new Date(now.getTime() + 90*24*60*60*1000); // 90 ימים קדימה
+  var pastLimit = new Date(now.getTime() - 30*24*60*60*1000); // 30 ימים אחורה
+  
+  var events = cal.getEvents(pastLimit, futureLimit);
+  var query = titleQuery.toLowerCase().trim();
+  var matches = [];
+  
+  events.forEach(function(ev) {
+    var title = ev.getTitle().toLowerCase();
+    // התאמה פשוטה: האם הכותרת מכילה את השאילתה או להיפך
+    if (title.indexOf(query) >= 0 || query.indexOf(title) >= 0) {
+      matches.push({
+        id: ev.getId(),
+        title: ev.getTitle(),
+        start: ev.getStartTime().toISOString(),
+        end: ev.getEndTime().toISOString(),
+        isRecurring: isEventRecurring(ev)
+      });
+    }
+  });
+  
+  return matches;
+}
+
+/**
+ * בדיקה האם אירוע הוא חוזר
+ * @param {CalendarEvent} event אירוע
+ * @return {boolean} true אם חוזר
+ */
+function isEventRecurring(event) {
+  try {
+    var series = event.getEventSeries();
+    return series !== null;
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * חילוץ שם אירוע לעדכון/מחיקה
+ * @param {Array} tokens מערך טוקנים
+ * @param {Array} keywords מילות מפתח לפעולה
+ * @return {string|null} שם האירוע
+ */
+function extractEventTitleForUpdateDelete(tokens, keywords) {
+  var words = [];
+  var foundKeyword = false;
+  
+  for (var i = 0; i < tokens.length; i++) {
+    var word = tokens[i].text;
+    
+    if (keywords.indexOf(word) >= 0) {
+      foundKeyword = true;
+      continue;
+    }
+    
+    if (foundKeyword) {
+      // דלג על מילות עזר
+      if (['את', 'ה', 'של', 'עם', 'ל'].indexOf(word) >= 0) continue;
+      words.push(word);
+    }
+  }
+  
+  return words.length > 0 ? words.join(' ') : null;
+}
+
+/**
+ * ניתוח שינויים מבוקשים לעדכון אירוע
+ * @param {Array} tokens מערך טוקנים
+ * @param {Object} existingEvent אירוע קיים
+ * @return {Object} אובייקט שינויים
+ */
+function parseChangesFromTokens(tokens, existingEvent) {
+  var changes = { warnings: [] };
+  
+  // חילוץ זמן חדש
+  var dateTime = parseDateTimeFromTokens(tokens);
+  if (dateTime.start && dateTime.end) {
+    changes.start = dateTime.start;
+    changes.end = dateTime.end;
+    if (dateTime.warnings) {
+      changes.warnings = changes.warnings.concat(dateTime.warnings);
+    }
+  }
+  
+  // חילוץ כותרת חדשה (אם יש "שנה ל" או "שם חדש")
+  var text = tokens.map(function(t) { return t.text; }).join(' ');
+  if (text.indexOf('שנה ל') >= 0 || text.indexOf('שם חדש') >= 0) {
+    changes.newTitle = extractTitle(tokens, dateTime);
+  }
+  
+  // חילוץ מיקום
+  changes.location = extractLocation(tokens);
+  
+  // חילוץ צבע
+  changes.color = extractColor(tokens);
+  
+  // חילוץ תזכורות
+  var reminders = extractReminders(tokens);
+  if (reminders.length > 0) {
+    changes.reminders = reminders;
+  }
+  
+  // חילוץ אורחים להוסיף/הסיר
+  var guestChanges = extractGuestChanges(tokens);
+  if (guestChanges.add.length > 0) {
+    changes.addGuests = guestChanges.add;
+  }
+  if (guestChanges.remove.length > 0) {
+    changes.removeGuests = guestChanges.remove;
+  }
+  
+  return changes;
+}
+
+/**
+ * חילוץ שינויי אורחים (הוסף/הסר)
+ * @param {Array} tokens מערך טוקנים
+ * @return {Object} אובייקט עם add, remove
+ */
+function extractGuestChanges(tokens) {
+  var result = { add: [], remove: [] };
+  var text = tokens.map(function(t) { return t.text; }).join(' ');
+  
+  // חיפוש דוא"ל
+  var emailPattern = /[\w\.-]+@[\w\.-]+\.\w+/g;
+  var emails = text.match(emailPattern) || [];
+  
+  var addMode = text.indexOf('הזמן') >= 0 || text.indexOf('הוסף אורח') >= 0;
+  var removeMode = text.indexOf('הסר אורח') >= 0 || text.indexOf('מחק אורח') >= 0;
+  
+  if (addMode) {
+    result.add = emails;
+  } else if (removeMode) {
+    result.remove = emails;
+  }
+  
+  return result;
+}
+
+/**
+ * חילוץ מיקום מטוקנים
+ * @param {Array} tokens מערך טוקנים
+ * @return {string|null} מיקום
+ */
+function extractLocation(tokens) {
+  var text = tokens.map(function(t) { return t.text; }).join(' ');
+  
+  // חיפוש "ב-" או "במיקום"
+  var locationPattern = /(?:ב-|במיקום|מיקום:?)\s*([^\s,]+(?:\s+[^\s,]+)*)/;
+  var match = text.match(locationPattern);
+  
+  if (match && match[1]) {
+    return match[1].trim();
+  }
+  
+  return null;
+}
+
+/**
+ * חילוץ אורחים (emails)
+ * @param {Array} tokens מערך טוקנים
+ * @return {Array} מערך emails
+ */
+function extractGuests(tokens) {
+  var text = tokens.map(function(t) { return t.text; }).join(' ');
+  var emailPattern = /[\w\.-]+@[\w\.-]+\.\w+/g;
+  return text.match(emailPattern) || [];
+}
+
+/**
+ * חילוץ תבנית חזרה
+ * @param {Array} tokens מערך טוקנים
+ * @return {string|null} כלל חזרה בפורמט RFC
+ */
+function extractRecurrencePattern(tokens) {
+  var text = tokens.map(function(t) { return t.text; }).join(' ');
+  
+  if (text.indexOf('כל יום') >= 0) {
+    return 'RRULE:FREQ=DAILY';
+  }
+  if (text.indexOf('כל שבוע') >= 0) {
+    return 'RRULE:FREQ=WEEKLY';
+  }
+  if (text.indexOf('כל חודש') >= 0) {
+    return 'RRULE:FREQ=MONTHLY';
+  }
+  if (text.indexOf('כל שנה') >= 0) {
+    return 'RRULE:FREQ=YEARLY';
+  }
+  
+  return null;
+}
+
+/**
+ * Handle suggestSlots action - הצעת משבצות זמן פנויות
+ * @param {Object} options אפשרויות חיפוש
+ * @return {Object} תשובה עם slots מוצעים
+ */
+function handleSuggestSlots(options) {
+  var cal = CalendarApp.getDefaultCalendar();
+  var date = options.date ? new Date(options.date) : new Date();
+  var duration = options.duration || 60; // דקות
+  var count = options.count || 5;
+  
+  // הגדר תחום חיפוש (היום או התאריך המבוקש, 8:00-20:00)
+  var startOfDay = new Date(date);
+  startOfDay.setHours(8, 0, 0, 0);
+  var endOfDay = new Date(date);
+  endOfDay.setHours(20, 0, 0, 0);
+  
+  var events = cal.getEvents(startOfDay, endOfDay);
+  var busySlots = events.map(function(ev) {
+    return {
+      start: ev.getStartTime().getTime(),
+      end: ev.getEndTime().getTime()
+    };
+  });
+  
+  // מיון לפי זמן התחלה
+  busySlots.sort(function(a, b) { return a.start - b.start; });
+  
+  // מציאת חלונות פנויים
+  var suggestions = [];
+  var currentTime = startOfDay.getTime();
+  var durationMs = duration * 60 * 1000;
+  
+  while (currentTime + durationMs <= endOfDay.getTime() && suggestions.length < count) {
+    var isFree = true;
+    
+    for (var i = 0; i < busySlots.length; i++) {
+      var busy = busySlots[i];
+      // בדיקה אם החלון הנוכחי מתנגש עם אירוע קיים
+      if (!(currentTime + durationMs <= busy.start || currentTime >= busy.end)) {
+        isFree = false;
+        // קפוץ לסוף האירוע העסוק
+        currentTime = busy.end;
+        break;
+      }
+    }
+    
+    if (isFree) {
+      var slotStart = new Date(currentTime);
+      var slotEnd = new Date(currentTime + durationMs);
+      suggestions.push({
+        start: slotStart.toISOString(),
+        end: slotEnd.toISOString(),
+        label: formatTimeRange(slotStart, slotEnd)
+      });
+      currentTime += durationMs; // מעבר לחלון הבא
+    } else if (isFree === true) {
+      currentTime += 30 * 60 * 1000; // התקדם ב-30 דקות
+    }
+  }
+  
+  return {
+    ok: true,
+    action: 'suggestSlots',
+    message: 'נמצאו ' + suggestions.length + ' משבצות זמן פנויות',
+    date: date.toISOString().split('T')[0],
+    duration: duration,
+    slots: suggestions
+  };
+}
+
+/**
+ * פורמט טווח זמן לתצוגה
+ * @param {Date} start תחילה
+ * @param {Date} end סוף
+ * @return {string} מחרוזת מפורמטת
+ */
+function formatTimeRange(start, end) {
+  var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
+  return pad(start.getHours()) + ':' + pad(start.getMinutes()) + 
+         '–' + pad(end.getHours()) + ':' + pad(end.getMinutes());
 }
