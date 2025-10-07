@@ -14,12 +14,52 @@ The deployment system consists of three interconnected workflows:
 2. **EXEC_URL Update** (`set-exec-url.yml`) - Updates the frontend with the new backend URL
 3. **PWA Deployment** (`pages.yml`) - Deploys the PWA to GitHub Pages
 
+```mermaid
+graph TD
+    A[Trigger: Hourly/Push/Manual] --> B[Job 1: Deploy GAS]
+    B --> C{Clasp Push}
+    C -->|Fail| D[Retry Push]
+    D --> E{Clasp Deploy}
+    C -->|Success| E
+    E -->|Fail| F[Retry Deploy]
+    F --> G{Selftest}
+    E -->|Success| G
+    G -->|Fail| H[Retry Selftest]
+    H --> I{Success?}
+    G -->|Success| I
+    I -->|Yes| J[Update progress.json 30%]
+    I -->|No| Z[Abort]
+    J --> K[Job 2: Update EXEC_URL]
+    K --> L[Checkout gh-pages]
+    L --> M[Update index.html]
+    M --> N[Commit & Push]
+    N --> O[Update progress.json 60%]
+    O --> P[Job 3: Trigger PWA Deploy]
+    P --> Q[Dispatch pages.yml]
+    Q --> R[Update progress.json 100%]
+    R --> S[Complete]
+    
+    style A fill:#e1f5ff
+    style J fill:#c8e6c9
+    style O fill:#fff9c4
+    style R fill:#a5d6a7
+    style S fill:#66bb6a
+    style Z fill:#ef5350
+```
+
 ### Autonomous Features
 
 #### 🔄 Self-Healing Deployments
-- Runs automatically every hour via cron schedule
+- Runs automatically every hour via cron schedule (`0 * * * *`)
 - Automatically retries failed operations (push, deploy, selftest)
 - Continues deployment chain only on successful steps
+- Can be customized by editing the cron expression in `gas-deploy.yml`
+
+**Cron Schedule Examples**:
+- Every hour: `0 * * * *` (current setting)
+- Every 6 hours: `0 */6 * * *`
+- Every day at midnight: `0 0 * * *`
+- Every Monday at 9 AM: `0 9 * * 1`
 
 #### 📊 Progress Tracking
 The system maintains a `progress.json` file that tracks deployment progress:
@@ -156,6 +196,21 @@ The workflows require these permissions:
 - Verify the pages.yml workflow was triggered
 - Check GitHub Pages settings in repository settings
 - Clear browser cache and service worker
+
+**Progress.json Not Updating**
+- Check that the workflow has `contents: write` permission
+- Verify git config is set correctly in the workflow
+- Check for merge conflicts in progress.json
+
+**Workflow Not Triggering on Schedule**
+- Verify the repository is active (GitHub disables scheduled workflows after 60 days of no activity)
+- Check the Actions tab for any disabled workflows
+- Manually trigger the workflow to re-enable it
+
+**Retry Logic Not Working**
+- Check the step IDs match in the workflow
+- Verify `continue-on-error: true` is set for the initial attempt
+- Check the `if` condition uses the correct outcome value
 
 ### Development
 
