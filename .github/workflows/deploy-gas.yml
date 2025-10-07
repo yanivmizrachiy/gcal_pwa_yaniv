@@ -1,0 +1,135 @@
+name: Deploy Google Apps Script
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install clasp
+        run: npm install -g @google/clasp
+
+      - name: Write clasp credentials
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          echo "$CLASPRC_JSON" > ~/.clasprc.json
+          echo "✔ Wrote ~/.clasprc.json"
+
+      - name: Configure .clasp.json
+        env:
+          SCRIPT_ID: ${{ secrets.SCRIPT_ID }}
+        run: |
+          cat > .clasp.json <<JSON
+          {
+            "scriptId": "$SCRIPT_ID",
+            "rootDir": "src"
+          }
+          JSON
+          echo "✔ Configured .clasp.json"
+
+      - name: Push to Apps Script
+        run: |
+          clasp push --force
+          echo "✔ clasp push completed"
+
+      - name: Deploy with fixed ID
+        env:
+          DEPLOYMENT_ID: ${{ secrets.DEPLOYMENT_ID }}
+        run: |
+          TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          clasp deploy -i "$DEPLOYMENT_ID" -d "ci: $TS"
+          echo "✔ Deployed with ID: $DEPLOYMENT_ID"
+
+      - name: SelfTest with retry
+        id: selftest
+        env:
+          WEB_APP_URL: ${{ secrets.WEB_APP_URL }}
+        run: |
+          max_attempts=4
+          delay=10
+
+          for attempt in $(seq 1 $max_attempts); do
+            echo "SelfTest attempt $attempt of $max_attempts"
+
+            # Determine separator for query string
+            sep='?'
+            echo "$WEB_APP_URL" | grep -q '?' && sep='&' || true
+            test_url="${WEB_APP_URL}${sep}mode=selftest"
+
+            # Fetch selftest endpoint
+            http_code=$(curl -sS -o /tmp/selftest.json -w "%{http_code}" "$test_url")
+            echo "HTTP $http_code"
+
+            if [ "$http_code" = "200" ]; then
+              # Check if ok:true in JSON
+              if grep -q '"ok"[[:space:]]*:[[:space:]]*true' /tmp/selftest.json; then
+                echo "✔ SelfTest passed"
+                echo "passed=true" >> $GITHUB_OUTPUT
+                exit 0
+              else
+                echo "⚠ SelfTest returned 200 but ok:false"
+                cat /tmp/selftest.json
+              fi
+            else
+              echo "⚠ SelfTest HTTP error $http_code"
+            fi
+
+            if [ $attempt -lt $max_attempts ]; then
+              echo "Waiting ${delay}s before retry..."
+              sleep $delay
+            fi
+          done
+
+          echo "❌ SelfTest failed after $max_attempts attempts"
+          echo "passed=false" >> $GITHUB_OUTPUT
+          exit 1
+
+      - name: Upload selftest artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: selftest-result
+          path: /tmp/selftest.json
+          retention-days: 7
+
+      - name: Summarize deployment
+        if: always()
+        env:
+          WEB_APP_URL: ${{ secrets.WEB_APP_URL }}
+          DEPLOYMENT_ID: ${{ secrets.DEPLOYMENT_ID }}
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: ${GITHUB_SHA:0:7}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Timestamp**: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Deployment ID**: $DEPLOYMENT_ID" >> $GITHUB_STEP_SUMMARY
+          echo "- **EXEC_URL**: $WEB_APP_URL" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f /tmp/selftest.json ]; then
+            echo "### SelfTest Result" >> $GITHUB_STEP_SUMMARY
+            echo '```json' >> $GITHUB_STEP_SUMMARY
+            head -c 500 /tmp/selftest.json >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "<!-- Future: Add rollback automation hook here -->" >> $GITHUB_STEP_SUMMARY
