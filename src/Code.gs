@@ -99,7 +99,7 @@ function handleSelfTest() {
     ok: true,
     action: 'selfTest',
     message: 'בדיקה תקינה',
-    nlpVersion: 'v1',
+    nlpVersion: 'v2',
     now: new Date().toISOString()
   };
 }
@@ -278,10 +278,16 @@ function handleDeleteEvent(eventId) {
 }
 
 /**
- * Handle parseNlp action - Hebrew Natural Language Processing v1
+ * Handle parseNlp action - Hebrew Natural Language Processing v1/v2
  */
 function handleParseNlp(text, parseOnly) {
-  var interpreted = parseHebrewCommand(text);
+  // Try v2 parser first (Phase A)
+  var interpreted = parseHebrewCommandV2(text);
+  
+  // Fallback to v1 if v2 fails
+  if (!interpreted.success) {
+    interpreted = parseHebrewCommand(text);
+  }
   
   if (!interpreted.success) {
     return {
@@ -383,6 +389,245 @@ function parseHebrewCommand(text) {
   };
   
   return result;
+}
+
+/**
+ * Parse Hebrew natural language command - NLP v2 (Phase A)
+ * Enhanced with: duration parsing, all-day detection, guest extraction, basic recurrence
+ */
+function parseHebrewCommandV2(text) {
+  var tokens = tokenizeHebrew(text);
+  var result = {
+    success: false,
+    tokens: tokens,
+    operation: null,
+    event: null,
+    changes: null,
+    eventId: null,
+    error: null
+  };
+  
+  // Detect operation keywords
+  var deleteKeywords = ['מחק', 'מחיקה', 'הסר', 'בטל'];
+  var updateKeywords = ['עדכן', 'שנה', 'ערוך', 'תקן'];
+  
+  var hasDelete = tokens.some(function(t) { 
+    return deleteKeywords.indexOf(t.text) >= 0; 
+  });
+  var hasUpdate = tokens.some(function(t) { 
+    return updateKeywords.indexOf(t.text) >= 0; 
+  });
+  
+  if (hasDelete) {
+    result.operation = 'delete';
+    result.error = 'מחיקה דורשת זיהוי אירוע ספציפי';
+    return result;
+  } else if (hasUpdate) {
+    result.operation = 'update';
+    result.error = 'עדכון דורש זיהוי אירוע ספציפי';
+    return result;
+  } else {
+    result.operation = 'create';
+  }
+  
+  // Parse date/time with v2 enhancements
+  var dateTime = parseDateTimeFromTokensV2(tokens, text);
+  if (!dateTime.start || !dateTime.end) {
+    result.error = 'לא זוהה תאריך או שעה';
+    return result;
+  }
+  
+  // Extract title (words not matching other patterns)
+  var title = extractTitle(tokens, dateTime);
+  
+  // Extract color
+  var color = extractColor(tokens);
+  
+  // Extract reminders
+  var reminders = extractReminders(tokens);
+  
+  // V2: Extract guests (emails)
+  var guests = extractGuests(text);
+  
+  // V2: Detect recurrence
+  var recurrence = extractRecurrence(text);
+  
+  result.success = true;
+  result.event = {
+    title: title || 'אירוע',
+    start: dateTime.start.toISOString(),
+    end: dateTime.end.toISOString(),
+    allDay: dateTime.allDay || false,
+    color: color,
+    reminders: reminders
+  };
+  
+  // Add guests if any
+  if (guests && guests.length > 0) {
+    result.event.guests = guests;
+  }
+  
+  // Add recurrence if detected
+  if (recurrence) {
+    result.event.recurrence = recurrence;
+  }
+  
+  return result;
+}
+
+/**
+ * Parse date/time with V2 enhancements: duration parsing and all-day detection
+ */
+function parseDateTimeFromTokensV2(tokens, fullText) {
+  var result = { start: null, end: null, allDay: false };
+  var baseDate = new Date();
+  
+  // Check for all-day keywords
+  var allDayKeywords = ['כל היום', 'יום מלא'];
+  var isAllDay = allDayKeywords.some(function(kw) {
+    return fullText.indexOf(kw) >= 0;
+  });
+  
+  // Look for date keywords
+  for (var i = 0; i < tokens.length; i++) {
+    var word = tokens[i].text;
+    if (word === 'היום') {
+      baseDate = new Date();
+      break;
+    } else if (word === 'מחר') {
+      baseDate = new Date();
+      baseDate.setDate(baseDate.getDate() + 1);
+      break;
+    } else if (word === 'מחרתיים') {
+      baseDate = new Date();
+      baseDate.setDate(baseDate.getDate() + 2);
+      break;
+    }
+  }
+  
+  // Look for time patterns
+  var timePattern = /(\d{1,2}):(\d{2})/g;
+  var times = [];
+  tokens.forEach(function(token) {
+    var match;
+    while ((match = timePattern.exec(token.text)) !== null) {
+      times.push({ hour: parseInt(match[1]), minute: parseInt(match[2]) });
+    }
+  });
+  
+  // V2: Parse duration
+  var duration = parseDuration(fullText);
+  
+  // If all-day flag or no times specified, create all-day event
+  if (isAllDay || times.length === 0) {
+    result.start = new Date(baseDate);
+    result.start.setHours(0, 0, 0, 0);
+    result.end = new Date(baseDate);
+    result.end.setHours(23, 59, 59, 999);
+    result.allDay = true;
+  } else if (times.length >= 2) {
+    // Two explicit times provided
+    result.start = new Date(baseDate);
+    result.start.setHours(times[0].hour, times[0].minute, 0, 0);
+    result.end = new Date(baseDate);
+    result.end.setHours(times[1].hour, times[1].minute, 0, 0);
+  } else if (times.length === 1) {
+    // One time + optional duration
+    result.start = new Date(baseDate);
+    result.start.setHours(times[0].hour, times[0].minute, 0, 0);
+    result.end = new Date(result.start);
+    
+    if (duration > 0) {
+      // Use parsed duration
+      result.end.setMinutes(result.end.getMinutes() + duration);
+    } else {
+      // Default 1 hour
+      result.end.setHours(result.start.getHours() + 1, result.start.getMinutes(), 0, 0);
+    }
+  }
+  
+  return result;
+}
+
+/**
+ * V2: Parse duration from Hebrew text
+ * Supports: 45 דקות, חצי שעה, שעה, שעתיים, 90 דק, 30 דק', 60 דקות
+ * Returns duration in minutes, or 0 if not found
+ */
+function parseDuration(text) {
+  // Common patterns
+  if (text.indexOf('חצי שעה') >= 0) return 30;
+  if (text.indexOf('שעתיים') >= 0) return 120;
+  if (text.indexOf('שעה') >= 0 && text.indexOf('שעתיים') < 0) return 60;
+  
+  // Number + דקות/דקה/דק/דק'
+  var minutePatterns = [
+    /(\d+)\s*דקות/,
+    /(\d+)\s*דקה/,
+    /(\d+)\s*דק'/,
+    /(\d+)\s*דק/
+  ];
+  
+  for (var i = 0; i < minutePatterns.length; i++) {
+    var match = text.match(minutePatterns[i]);
+    if (match) {
+      return parseInt(match[1]);
+    }
+  }
+  
+  return 0;
+}
+
+/**
+ * V2: Extract guest emails from text
+ * Finds all email addresses, deduplicates, caps at 20
+ */
+function extractGuests(text) {
+  var emailPattern = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+  var matches = text.match(emailPattern);
+  
+  if (!matches) return [];
+  
+  // Deduplicate using object as set
+  var uniqueEmails = {};
+  matches.forEach(function(email) {
+    uniqueEmails[email.toLowerCase()] = true;
+  });
+  
+  // Convert back to array and cap at 20
+  var emails = Object.keys(uniqueEmails);
+  return emails.slice(0, 20);
+}
+
+/**
+ * V2: Extract recurrence rules from text
+ * Supports: "כל יום" (daily), "כל שני"/"כל יום שני" (weekly)
+ * End conditions: "עד <date>"
+ */
+function extractRecurrence(text) {
+  var recurrence = null;
+  
+  // Daily pattern
+  if (text.indexOf('כל יום') >= 0) {
+    recurrence = { frequency: 'DAILY' };
+  }
+  
+  // Weekly pattern (Monday)
+  if (text.indexOf('כל שני') >= 0 || text.indexOf('כל יום שני') >= 0) {
+    recurrence = { frequency: 'WEEKLY', byDay: ['MO'] };
+  }
+  
+  // Check for end date: "עד <date>"
+  if (recurrence) {
+    // Simple pattern for "עד" followed by date keywords
+    if (text.indexOf('עד') >= 0) {
+      // For now, just flag that there's an end condition
+      // Full date parsing for end conditions would be Phase B
+      recurrence.hasEndCondition = true;
+    }
+  }
+  
+  return recurrence;
 }
 
 /**
