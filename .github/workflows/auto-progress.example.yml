@@ -1,0 +1,127 @@
+name: Auto Progress (Example Integration)
+
+# This is a reference implementation showing how to integrate
+# security scanning and analytics into an autonomous workflow.
+# Rename to auto-progress.yml to activate.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 */6 * * *'  # Every 6 hours
+
+permissions:
+  contents: write
+  security-events: write
+
+jobs:
+  autonomous-cycle:
+    name: Autonomous Progress Cycle
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # ═══════════════════════════════════════════════════════════
+      # INTEGRITY VERIFICATION (AFTER checkout, BEFORE execution)
+      # ═══════════════════════════════════════════════════════════
+      - name: Verify Script Integrity
+        id: integrity
+        run: |
+          echo "🔒 Running integrity verification..."
+          node scripts/verify_hashes.js
+          echo "integrity_passed=true" >> $GITHUB_OUTPUT
+
+      - name: Log Integrity Check
+        run: |
+          timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          echo "" >> .autonomy/security/AUDIT_LOG.md
+          echo "### ${timestamp} - Hash Verification" >> .autonomy/security/AUDIT_LOG.md
+          echo "**Event**: verify_success" >> .autonomy/security/AUDIT_LOG.md
+          echo "**Status**: SUCCESS" >> .autonomy/security/AUDIT_LOG.md
+          echo "**Details**: All script hashes validated successfully before execution." >> .autonomy/security/AUDIT_LOG.md
+          echo "**Actor**: auto-progress-workflow" >> .autonomy/security/AUDIT_LOG.md
+          echo "" >> .autonomy/security/AUDIT_LOG.md
+
+      # ═══════════════════════════════════════════════════════════
+      # AUTONOMOUS WORK (Execute autonomous tasks here)
+      # ═══════════════════════════════════════════════════════════
+      - name: Perform Autonomous Work
+        id: work
+        run: |
+          echo "🤖 Performing autonomous tasks..."
+          # Add your autonomous logic here
+          echo "impact_level=medium" >> $GITHUB_OUTPUT
+          echo "work_completed=true" >> $GITHUB_OUTPUT
+
+      # ═══════════════════════════════════════════════════════════
+      # ANALYTICS AGGREGATION (At end of cycle)
+      # ═══════════════════════════════════════════════════════════
+      - name: Aggregate Analytics Timeline
+        id: analytics
+        run: |
+          echo "📊 Aggregating analytics timeline..."
+          bash scripts/aggregate_reports.sh
+          
+          # Check if timeline changed
+          if git diff --stat .autonomy/analytics/timeline.json | grep -q '.*'; then
+            size_change=$(git diff .autonomy/analytics/timeline.json | wc -c)
+            echo "timeline_changed=true" >> $GITHUB_OUTPUT
+            echo "timeline_size_change=$size_change" >> $GITHUB_OUTPUT
+          else
+            echo "timeline_changed=false" >> $GITHUB_OUTPUT
+            echo "timeline_size_change=0" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Commit Results (with enhanced policy)
+        if: steps.work.outputs.work_completed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Get analytics metadata
+          entry_count=$(node -p "require('./.autonomy/analytics/timeline.json').metadata.totalEntries" || echo "0")
+          impact_level="${{ steps.work.outputs.impact_level }}"
+          timeline_changed="${{ steps.analytics.outputs.timeline_changed }}"
+          timeline_size="${{ steps.analytics.outputs.timeline_size_change }}"
+          
+          # Stage changes
+          git add .
+          
+          # Check if there are changes to commit
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            # Build commit message with impact level and entry count
+            commit_msg="[auto-cycle] cycle=$(date +%s)"
+            commit_msg="${commit_msg}, impact=${impact_level}"
+            commit_msg="${commit_msg}, entries=${entry_count}"
+            
+            # Add timeline info if it changed significantly
+            if [ "$timeline_changed" = "true" ] && [ "$timeline_size" -gt 128 ]; then
+              commit_msg="${commit_msg}, timeline_updated=+${timeline_size}B"
+            fi
+            
+            git commit -m "$commit_msg"
+            git push
+            echo "✅ Changes committed and pushed"
+          fi
+
+      - name: Generate Summary
+        if: always()
+        run: |
+          echo "## Autonomous Cycle Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Integrity Check**: ${{ steps.integrity.outputs.integrity_passed }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Work Completed**: ${{ steps.work.outputs.work_completed }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Impact Level**: ${{ steps.work.outputs.impact_level }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Timeline Entries**: $(node -p "require('./.autonomy/analytics/timeline.json').metadata.totalEntries" || echo "N/A")" >> $GITHUB_STEP_SUMMARY
+          echo "- **Timeline Changed**: ${{ steps.analytics.outputs.timeline_changed }}" >> $GITHUB_STEP_SUMMARY
