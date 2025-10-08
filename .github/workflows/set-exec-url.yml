@@ -1,0 +1,109 @@
+name: Set EXEC_URL from Issue → apply to gh-pages
+on:
+  issues:
+    types: [opened, edited]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  set-exec-url:
+    if: >
+      contains(github.event.issue.title, 'Set EXEC_URL')
+      || (github.event_name == 'issue_comment' && contains(github.event.issue.title, 'Set EXEC_URL'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Parse URL from Issue/Comment
+        id: parse
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const core = require('@actions/core');
+            const body = (context.payload.comment?.body ?? context.payload.issue?.body ?? '');
+            // קולט גם קישורי exec ישנים וגם חדשים
+            const re = /(https:\/\/script\.google(?:usercontent|)\.com\/[^\s"'<>]+|https:\/\/script\.google\.com\/macros\/s\/[^\s"'<>]+\/exec)/i;
+            const m = body.match(re);
+            if (!m) {
+              core.setFailed('No EXEC_URL found in the Issue/Comment body.');
+              return;
+            }
+            core.setOutput('exec_url', m[1]);
+
+      - name: Checkout default branch
+        uses: actions/checkout@v4
+
+      - name: Fetch gh-pages
+        run: git fetch origin gh-pages || true
+
+      - name: Switch to gh-pages
+        run: |
+          if git branch -a | grep -q "remotes/origin/gh-pages"; then
+            git checkout gh-pages
+          else
+            git checkout --orphan gh-pages
+            rm -rf *
+            echo "<!doctype html><meta charset='utf-8'><title>Init</title>OK" > index.html
+            git add -A
+            git commit -m "init gh-pages"
+            git push origin gh-pages
+          fi
+
+      - name: Update EXEC_URL in index.html (supports both patterns)
+        env:
+          EXEC_URL: ${{ steps.parse.outputs.exec_url }}
+        run: |
+          test -f index.html || { echo "index.html missing in gh-pages"; exit 1; }
+          node -e "
+          const fs = require('fs');
+          const p = 'index.html';
+          let s = fs.readFileSync(p, 'utf8');
+          const url = process.env.EXEC_URL;
+          let changed = false;
+
+          // 1) const EXEC_URL = "…";
+          s = s.replace(/const\s+EXEC_URL\s*=\s*['\"][^'\"]+['\"];?/,
+                        (m)=>{ changed=true; return `const EXEC_URL = \"${url}\";`; });
+
+          // 2) window.EXEC_URL = "…";
+          s = s.replace(/window\.EXEC_URL\s*=\s*['\"][^'\"]+['\"];?/,
+                        (m)=>{ changed=true; return `window.EXEC_URL = \"${url}\";`; });
+
+          // אם לא מצא דפוס — נזריק ליד </script> או בסוף ה־body
+          if(!changed){
+            if(s.includes('</script>')){
+              s = s.replace('</script>', `\nwindow.EXEC_URL = \"${url}\";\n</script>`);
+              changed = true;
+            } else if (s.includes('</body>')) {
+              s = s.replace('</body>', `<script>window.EXEC_URL = \"${url}\";</script>\n</body>`);
+              changed = true;
+            } else {
+              s += `\\n<script>window.EXEC_URL = \"${url}\";</script>\\n`;
+              changed = true;
+            }
+          }
+          fs.writeFileSync(p, s);
+          console.log('EXEC_URL set to:', url);
+          "
+
+      - name: Commit & push
+        run: |
+          git config user.name  "auto-bot"
+          git config user.email "auto-bot@users.noreply.github.com"
+          git add index.html
+          git commit -m "[auto] Set EXEC_URL from Issue" || echo "no changes"
+          git push origin gh-pages
+
+      - name: Comment result
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const execUrl = core.getInput('exec_url') || 'N/A';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `✅ EXEC_URL updated in **gh-pages**.\n\n\`\`\`\n${execUrl}\n\`\`\`\nSite: https://${context.repo.owner}.github.io/${context.repo.repo}`
+            });

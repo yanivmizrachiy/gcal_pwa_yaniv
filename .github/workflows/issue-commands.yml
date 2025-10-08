@@ -1,0 +1,46 @@
+name: Issue Commands
+
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  handle:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read command from issue
+        id: cmd
+        env:
+          TITLE: ${{ github.event.issue.title }}
+          BODY: ${{ github.event.issue.body }}
+        run: |
+          set -euo pipefail
+          echo "🟦 Reading issue: $TITLE"
+          echo "----------------------------------"
+          echo "$BODY"
+          echo "----------------------------------"
+          found=""
+
+          # normalize
+          t="$(printf '%s\n' "$TITLE" | tr '[:upper:]' '[:lower:]')"
+          b="$(printf '%s\n' "$BODY" | tr '[:upper:]' '[:lower:]')"
+
+          # detect keywords (for auto-deploy or update)
+          if echo "$t$b" | grep -Eq '(deploy|update)'; then
+            echo "deploy=true" >> $GITHUB_OUTPUT
+            found="1"
+          fi
+
+          if [ -z "$found" ]; then
+            echo "⚪️ No deploy command found."
+          fi
+
+      - name: Trigger GAS Deploy workflow
+        if: steps.cmd.outputs.deploy == 'true'
+        run: |
+          echo "🚀 Triggering GAS Deploy Action..."
+          gh workflow run gas-deploy.yml --ref main || echo "⚠️ Workflow trigger failed (might already be running)"
