@@ -1,0 +1,48 @@
+name: Heartbeat
+on:
+  schedule: [ { cron: "${{ vars.HEARTBEAT_CRON || '*/5 * * * *' }}" } ]
+  workflow_dispatch:
+permissions: { contents: write, issues: write }
+jobs:
+  beat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y jq curl
+      - id: env
+        run: |
+          mkdir -p status
+          if [ -z "${{ vars.EXEC_URL }}" ]; then
+            echo '{"ok":false,"reason":"EXEC_URL missing"}' > status/progress.json
+            exit 1
+          fi
+      - id: selftest
+        run: |
+          URL="${{ vars.EXEC_URL }}?action=selfTest"
+          RES=$(curl -sS "$URL" || true)
+          echo "$RES" | tee status/last_run.json
+          if [ "$(echo "$RES" | jq -r '.ok // false')" != "true" ]; then
+            echo '{"phase":"selftest","progress":25,"ok":false}' > status/progress.json; exit 2; fi
+          echo '{"phase":"selftest","progress":40,"ok":true}'  > status/progress.json
+      - id: crud
+        run: bash scripts/crud_smoke.sh "${{ vars.EXEC_URL }}"; echo '{"phase":"crud","progress":70,"ok":true}' > status/progress.json
+      - id: pwa
+        run: |
+          set -e
+          BASE="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}"
+          for path in manifest.webmanifest favicon.ico service-worker.js; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/$path"); [ "$code" = 200 ] || { echo "Missing $path ($code)"; exit 3; }
+          done
+          echo '{"phase":"pwa","progress":85,"ok":true}' > status/progress.json
+      - uses: actions/upload-artifact@v4
+        with: { name: heartbeat-artifacts, path: status/*.json }
+      - if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const num = parseInt(process.env.HEARTBEAT_ISSUE_NUMBER||0,10)||null;
+            if(!num){ core.info('HEARTBEAT_ISSUE_NUMBER not set'); return; }
+            const fs = require('fs');
+            const last = fs.existsSync('status/last_run.json')?fs.readFileSync('status/last_run.json','utf8'):'{}';
+            const prog = fs.existsSync('status/progress.json')?fs.readFileSync('status/progress.json','utf8'):'{}';
+            await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: num, body: `**Heartbeat**\n\n- Progress: ${prog}\n- Last: ${last}` });
