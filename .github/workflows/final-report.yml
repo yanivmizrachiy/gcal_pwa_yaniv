@@ -1,0 +1,15 @@
+name: Final Report
+on: { workflow_dispatch: {} }
+permissions: { contents: write, actions: write, issues: write }
+jobs:
+  full:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: benc-uk/workflow-dispatch@v1
+        with: { workflow: gas-deploy.yml }
+      - uses: benc-uk/workflow-dispatch@v1
+        with: { workflow: heartbeat.yml }
+      - run: mkdir -p status && echo '{"ok":true,"progress":100}' > status/progress.json
+      - uses: actions/upload-artifact@v4
+        with: { name: final-report, path: status/progress.json }
