@@ -39,17 +39,42 @@ export interface FindEventsOptions {
 export interface NlpToken {
   text: string;
   index: number;
-  type: 'time' | 'date' | 'color' | 'reminder' | 'number' | 'text';
+  type: 'time' | 'date' | 'color' | 'reminder' | 'number' | 'text' | 'email' | 'duration' | 'recurrence' | 'action' | 'guest-keyword';
+}
+
+export interface NlpWarning {
+  code: string;
+  message: string;
+}
+
+export interface NlpRecurrence {
+  detected: boolean;
+  pattern: string | null;
 }
 
 export interface NlpInterpretation {
   success: boolean;
-  tokens: NlpToken[];
-  operation: 'create' | 'update' | 'delete' | null;
-  event?: CreateEventRequest;
+  operation: 'create' | 'update' | 'delete' | 'disambiguation';
+  warnings: NlpWarning[];
+  interpreted?: {
+    title?: string;
+    start?: Date | string;
+    end?: Date | string;
+    guests?: string[];
+    reminders?: number[];
+    color?: string;
+    recurrence?: NlpRecurrence | null;
+  };
+  event?: CreateEventRequest & { guests?: string[] };
   changes?: UpdateEventRequest;
   eventId?: string | null;
   error?: string | null;
+  disambiguation?: Array<{
+    id: string;
+    title: string;
+    start: string;
+    end: string;
+  }>;
 }
 
 export interface ApiResponse<T = any> {
@@ -62,7 +87,15 @@ export interface ApiResponse<T = any> {
 export interface SelfTestResponse extends ApiResponse {
   action: 'selfTest';
   nlpVersion: string;
-  now: string;
+  progressPercent?: number;
+  completed?: boolean;
+  features?: string[];
+  warningsSample?: NlpWarning[];
+  calendarAccess?: boolean;
+  ts: string;
+  email?: string | null;
+  // Legacy fields (v1)
+  now?: string;
 }
 
 export interface FindEventsResponse extends ApiResponse {
@@ -88,7 +121,17 @@ export interface DeleteEventResponse extends ApiResponse {
 
 export interface ParseNlpResponse extends ApiResponse {
   action: 'parseNlp';
-  parseOnly?: boolean;
-  interpreted: NlpInterpretation;
+  parseOnly: boolean;
+  operation?: 'create' | 'update' | 'delete' | 'disambiguation';
+  interpreted?: NlpInterpretation;
+  warnings: NlpWarning[];
   event?: CalendarEvent;
+  changedFields?: string[];
+  deletedEventId?: string;
+  disambiguation?: Array<{
+    id: string;
+    title: string;
+    start: string;
+    end: string;
+  }>;
 }

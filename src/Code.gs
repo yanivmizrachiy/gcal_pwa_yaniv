@@ -464,6 +464,12 @@ function handleCreate(ctx) {
       message: 'זמן לא זוהה – הוגדר זמן ברירת מחדל'
     });
     temporal = getDefaultTemporal();
+  } else if (temporal.start && !temporal.timeSpecified) {
+    // Date was found but no explicit time
+    ctx.warnings.push({
+      code: 'DEFAULT_TIME_INFERRED',
+      message: 'שעה לא צוינה – הוגדרה שעה ברירת מחדל (09:00)'
+    });
   }
   
   // Check for invalid guest emails
@@ -610,8 +616,9 @@ function tokenize(text) {
  * Classify token type - v2 enhanced
  */
 function classifyTokenV2(word) {
-  // Email detection
-  if (/@/.test(word) && /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/.test(word)) {
+  // Email detection - strict validation
+  var cleanWord = word.replace(/[;,]$/, '');
+  if (/@/.test(cleanWord) && /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(cleanWord)) {
     return 'email';
   }
   
@@ -746,6 +753,7 @@ function parseTemporal(ctx) {
     result.start.setHours(times[0].hour, times[0].minute, 0, 0);
     result.end = new Date(baseDate);
     result.end.setHours(times[1].hour, times[1].minute, 0, 0);
+    result.timeSpecified = true;
   } else if (times.length === 1) {
     result.start = new Date(baseDate);
     result.start.setHours(times[0].hour, times[0].minute, 0, 0);
@@ -755,11 +763,13 @@ function parseTemporal(ctx) {
     } else {
       result.end = new Date(result.start.getTime() + 60 * 60000); // Default 1 hour
     }
+    result.timeSpecified = true;
   } else if (dateFound) {
-    // Date without time - default to 9:00-10:00
+    // Date without time - default to 9:00-10:00 and mark as inferred
     result.start = new Date(baseDate);
     result.start.setHours(9, 0, 0, 0);
     result.end = new Date(result.start.getTime() + 60 * 60000);
+    result.timeSpecified = false;
   }
   
   result.duration = duration;
@@ -813,6 +823,12 @@ function parseGuests(ctx) {
   var duplicates = [];
   
   for (var i = 0; i < ctx.tokens.length; i++) {
+    // Consume guest keywords
+    if (ctx.tokens[i].type === 'guest-keyword') {
+      ctx.consumedIndexes.push(i);
+      continue;
+    }
+    
     if (ctx.tokens[i].type === 'email') {
       var email = ctx.tokens[i].text.replace(/;$/, '').replace(/,$/, '');
       
@@ -928,8 +944,25 @@ function parseColor(ctx) {
   
   for (var i = 0; i < ctx.tokens.length; i++) {
     if (ctx.tokens[i].type === 'color') {
+      var token = ctx.tokens[i].text;
+      
+      // Check if this is just the keyword "צבע" without a color
+      if (token === 'צבע' && i + 1 < ctx.tokens.length) {
+        ctx.consumedIndexes.push(i);
+        // Look ahead for actual color
+        var nextToken = ctx.tokens[i + 1];
+        for (var hebrewColor in colorMap) {
+          if (nextToken.text.indexOf(hebrewColor) >= 0) {
+            ctx.consumedIndexes.push(i + 1);
+            return colorMap[hebrewColor];
+          }
+        }
+        continue;
+      }
+      
+      // Direct color mention
       for (var hebrewColor in colorMap) {
-        if (ctx.tokens[i].text.indexOf(hebrewColor) >= 0) {
+        if (token.indexOf(hebrewColor) >= 0) {
           ctx.consumedIndexes.push(i);
           return colorMap[hebrewColor];
         }
