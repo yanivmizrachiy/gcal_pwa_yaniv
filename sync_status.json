@@ -1,15 +1,11 @@
 {
-  "updated": "2025-10-09T16:47:30Z",
-  "calendar_selftest": {
-    "status": "N/A",
-    "content_type": "N/A"
+  "updated": "2025-10-09T16:50:10Z",
+  "status": {
+    "SelfTest": "N/A",
+    "Content-Type": "N/A"
   },
-  "pwa_status": {
-    "index": "N/A",
-    "manifest": "N/A",
-    "service_worker": "N/A"
+  "pwa": {
+    "index": "N/A"
   },
-  "exec_url": "<hidden>",
-  "space_url": "<hidden>",
   "device": "Termux (Mobile)"
 }
