@@ -35,5 +35,5 @@ jobs:
             if(!num) return;
             await github.rest.issues.createComment({
               owner: context.repo.owner, repo: context.repo.repo, issue_number: num,
-              body: 'AI-Mirror: Optimization cycle completed.'
+              body: "🪞 AI-Mirror: Optimization cycle completed."
             });
