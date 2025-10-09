@@ -1,0 +1,68 @@
+{
+  "project": "Google Calendar App (yanivmizrachiy/gcal_pwa_yaniv)",
+  "sync_mode": "Realtime (GitHub ↔ Space ↔ Termux)",
+  "progress_total": 54,
+  "stages": [
+    {
+      "id": 1,
+      "title": "סנכרון מיידי",
+      "progress": 90
+    },
+    {
+      "id": 2,
+      "title": "חיבור ליומן גוגל אמיתי",
+      "progress": 30
+    },
+    {
+      "id": 3,
+      "title": "Workflows חכמים",
+      "progress": 95
+    },
+    {
+      "id": 4,
+      "title": "PWA חי",
+      "progress": 45
+    },
+    {
+      "id": 5,
+      "title": "גרפיקה וביצועים",
+      "progress": 25
+    },
+    {
+      "id": 6,
+      "title": "דיווחים חכמים",
+      "progress": 60
+    },
+    {
+      "id": 7,
+      "title": "יכולות Calendar מלאות",
+      "progress": 20
+    },
+    {
+      "id": 8,
+      "title": "NLP חכם בעברית",
+      "progress": 0
+    },
+    {
+      "id": 9,
+      "title": "Offline Sync",
+      "progress": 0
+    },
+    {
+      "id": 10,
+      "title": "Recovery System",
+      "progress": 60
+    },
+    {
+      "id": 11,
+      "title": "Auto-Mirror Loop",
+      "progress": 85
+    },
+    {
+      "id": 12,
+      "title": "AI Supervisor",
+      "progress": 30
+    }
+  ],
+  "updated": "2025-10-09T14:53:44Z"
+}
