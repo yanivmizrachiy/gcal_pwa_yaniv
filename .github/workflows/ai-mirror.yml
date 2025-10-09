@@ -1,12 +1,8 @@
 name: AI-Mirror
 on:
-  schedule:
-    - cron: "*/15 * * * *"
+  schedule: [ { cron: "*/15 * * * *" } ]
   workflow_dispatch: {}
-permissions:
-  contents: write
-  actions: write
-  issues: write
+permissions: { contents: write, actions: write, issues: write }
 jobs:
   mirror:
     runs-on: ubuntu-latest
@@ -18,8 +14,7 @@ jobs:
       - run: node scripts/ai_mirror_analyzer.js
       - run: node scripts/ai_optimizer.js
       - run: node scripts/ai_predictor.js
-      - env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - env: { GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} }
         run: |
           git config user.name "auto-mirror-bot"
           git config user.email "auto-mirror@users.noreply.github.com"
@@ -32,7 +27,4 @@ jobs:
           script: |
             const num = parseInt(process.env.HEARTBEAT_ISSUE_NUMBER||0,10)||null;
             if(!num) return;
-            await github.rest.issues.createComment({
-              owner: context.repo.owner, repo: context.repo.repo, issue_number: num,
-              body: '🪞 AI-Mirror: Optimization cycle completed.'
-            });
+            await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: num, body: '🪞 AI-Mirror: Optimization cycle completed.' });
