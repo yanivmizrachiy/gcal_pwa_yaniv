@@ -1,11 +1,15 @@
 {
-  "updated": "2025-10-09T16:50:10Z",
-  "status": {
-    "SelfTest": "N/A",
-    "Content-Type": "N/A"
+  "updated": "2025-10-09T16:53:17Z",
+  "checks": {
+    "SelfTest": {
+      "status": "⚠️ לא JSON — נדרש תיקון ב־Apps Script",
+      "percent": 80
+    },
+    "SpaceWebhook": {
+      "status": "⚠️ לא מגיב",
+      "percent": 60
+    }
   },
-  "pwa": {
-    "index": "N/A"
-  },
+  "overall_progress": 92,
   "device": "Termux (Mobile)"
 }
